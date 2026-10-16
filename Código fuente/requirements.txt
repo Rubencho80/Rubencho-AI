@@ -1,0 +1,40 @@
+# Rubencho AI — dependencias de Python (para ejecutar el código o compilar la aplicación)
+# Instalar:  python -m pip install -r requirements.txt
+
+# Básico
+requests
+SpeechRecognition
+pyaudio
+pystray
+pillow
+numpy
+
+# Transcripción de órdenes (Whisper) y reconocimiento offline (Vosk)
+faster-whisper
+vosk
+
+# Voz de la IA (TTS) — pywin32 para las voces OneCore de Windows
+pyttsx3
+pywin32
+gtts
+pygame
+
+# Push-to-Talk
+pynput
+
+# Control del PC: leer los botones, campos y menús de las ventanas
+comtypes
+
+# Cámara web (visión: <CAMARA/>)
+opencv-python
+
+# Opcional: control del navegador (después: playwright install chromium)
+playwright
+
+# Opcional: Whisper en la GPU NVIDIA (≈10 veces más rápido que en CPU).
+# Después elige «auto» o «cuda» en Configuración → Reconocimiento.
+# nvidia-cublas-cu12
+# nvidia-cudnn-cu12
+
+# Para compilar la aplicación (compilar.bat)
+pyinstaller>=6.10

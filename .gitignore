@@ -1,0 +1,32 @@
+# Instalador compilado: se publica en «Releases», no en el repositorio (pesa ~190 MB)
+*.exe
+Código fuente/_compilacion/
+build/
+dist/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node.js (se instala con «npm ci» dentro de Código fuente/whatsapp)
+node_modules/
+
+# Datos personales: nunca se suben
+whatsapp_session/
+whatsapp_store/
+.voiceai/
+config.json
+memoria.json
+recordatorios.json
+historial_conversaciones.txt
+cmd_log.txt
+capturas/
+*.log
+diagnostico.txt
+
+# Sistema
+Thumbs.db
+desktop.ini
+.DS_Store
