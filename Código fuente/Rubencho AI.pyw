@@ -29,7 +29,7 @@ Novedades 1.2.0
   • Muchos arreglos (ver el resumen de cambios entregado con esta versión).
 """
 
-APP_VERSION = "1.3.0"      # interna: no se muestra al usuario (ver version_info.txt)
+APP_VERSION = "1.3.1"      # interna: no se muestra al usuario (ver version_info.txt)
 
 import tkinter as tk
 from tkinter import ttk, messagebox, colorchooser, filedialog, simpledialog
@@ -7562,7 +7562,7 @@ class SettingsWindow(tk.Toplevel):
         # ── Instrucciones de instalación ──────────────────────────────────────
         self._info(p, [
             "📋  INSTALACIÓN DEL BRIDGE:",
-            "1.  Instala Node.js 18+ desde https://nodejs.org",
+            "1.  Instala Node.js 20+ desde https://nodejs.org",
             "2.  Copia whatsapp_bridge.js y package.json junto a Rubencho_AI.pyw",
             "3.  Abre una terminal en esa carpeta y ejecuta:  npm install",
             "4.  Activa la integración arriba y guarda la configuración",

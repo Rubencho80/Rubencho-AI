@@ -44,7 +44,7 @@ if not exist "whatsapp\node_modules\@whiskeysockets\baileys" (
     call npm ci --omit=dev
     if errorlevel 1 (
         popd
-        echo [ERROR] Falta Node.js o ha fallado npm. Instala Node.js 18 o superior.
+        echo [ERROR] Falta Node.js o ha fallado npm. Instala Node.js 20 o superior.
         goto :error
     )
     popd

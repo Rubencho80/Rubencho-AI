@@ -3,6 +3,19 @@
 Las versiones se publican en [Releases](../../releases) con su instalador
 (`Instalar Rubencho AI.exe`).
 
+## 1.3.1 — 18-10-2026
+
+- **WhatsApp: los mensajes enviados ya no se quedan en «Esperando el mensaje»**.
+  El puente usaba Baileys 6.7, que cifraba los mensajes para el número de
+  teléfono, pero WhatsApp ya identifica los dispositivos por su LID y el móvil
+  que los recibía no podía descifrarlos. Ahora usa Baileys 7.0.0-rc14, con
+  direcciones LID.
+- Si un móvil no consigue descifrar un mensaje y pide que se le reenvíe, el puente
+  se lo reenvía (antes no podía).
+- Los mensajes que manda el puente se marcan antes de enviarlos, para que su eco
+  en el chat propio nunca se tome como una orden.
+- Ahora hace falta **Node.js 20 o superior** (antes 18).
+
 ## 1.3.0 — 17-10-2026
 
 Primera versión publicada en GitHub.

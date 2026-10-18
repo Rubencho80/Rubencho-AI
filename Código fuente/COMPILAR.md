@@ -13,7 +13,7 @@ aplicación instalada y conserva tus datos.
   `py -3.13` o `python`; también se le puede indicar otro:
   `compilar.bat "C:\ruta\python.exe"`).
 - **Inno Setup 6**: `winget install JRSoftware.InnoSetup`.
-- **Node.js 18+**: las librerías del puente de WhatsApp van dentro del instalador.
+- **Node.js 20+**: las librerías del puente de WhatsApp van dentro del instalador.
   Si falta `whatsapp\node_modules`, `compilar.bat` las instala con `npm ci`.
 
 ## Archivos

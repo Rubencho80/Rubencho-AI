@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * whatsapp_bridge.js — Puente REST para WhatsApp usando Baileys
- * Rubencho AI  ·  Compatible con Baileys 6.7+  (sin makeInMemoryStore)
+ * Rubencho AI  ·  Baileys 7 (direcciones LID de WhatsApp)
  *
  * Además de enviar mensajes y atender el chat propio, guarda en el PC:
  *   · la agenda (nombres de los contactos)            → whatsapp_store/contactos.json
@@ -26,7 +26,7 @@ const {
     jidDecode,
     encodeWAMessage,
     encodeSignedDeviceIdentity,
-    generateMessageID,
+    generateMessageIDV2,
 } = require('@whiskeysockets/baileys');
 const pino   = require('pino');
 const QRCode = require('qrcode');
@@ -210,7 +210,9 @@ function upsertContact(c) {
     if (!c || !c.id) return;
     const id = norm(c.id);
     if (isIgnoredJid(id)) return;
-    let pn  = c.jid ? norm(c.jid) : (id.endsWith('@s.whatsapp.net') ? id : null);
+    let pn  = c.jid ? norm(c.jid) : c.phoneNumber ? norm(c.phoneNumber)
+            : (id.endsWith('@s.whatsapp.net') ? id : null);
+    if (pn && !pn.endsWith('@s.whatsapp.net')) pn = null;
     const lid = c.lid ? norm(c.lid) : (id.endsWith('@lid') ? id : null);
     if (lid && !pn && lidToPn[lid]) pn = lidToPn[lid];
     if (lid && pn && lidToPn[lid] !== pn) { lidToPn[lid] = pn; mergeChat(lid, pn); }
@@ -246,7 +248,7 @@ async function sendToMyPhone(message) {
                        content: encodeSignedDeviceIdentity(authState.creds.account, true) });
     await sock.sendNode({
         tag: 'message',
-        attrs: { id: generateMessageID(), type: 'text', to: phoneJid,
+        attrs: { id: generateMessageIDV2(authState.creds.me.id), type: 'text', to: phoneJid,
                  category: 'peer', push_priority: 'high_force' },
         content,
     });
@@ -356,23 +358,32 @@ function mergeChat(fromId, toId) {
     try { fs.rmSync(chatFile(fromId), { force: true }); } catch {}
     saveChatSoon(toId);
 }
+// Relación LID ↔ teléfono que va conociendo Baileys
+function learnLid(lid, pn) {
+    lid = norm(lid || ''); pn = norm(pn || '');
+    if (!lid.endsWith('@lid') || !pn.endsWith('@s.whatsapp.net') || lidToPn[lid] === pn) return;
+    lidToPn[lid] = pn;
+    if (contacts[lid]) upsertContact({ id: pn, lid, ...contacts[lid] });
+    saveContactsSoon();
+    mergeChat(lid, pn);
+}
 // Chat al que pertenece un mensaje (jid de teléfono si se conoce; si no, el lid)
 function canonChat(remoteJid, key) {
     const id = norm(remoteJid || '');
     if (id.endsWith('@lid')) {
         // sender_pn = teléfono de quien escribe (solo vale si no lo he escrito yo)
-        if (key && !key.fromMe && key.senderPn) {
-            const pn = norm(key.senderPn);
-            if (pn.endsWith('@s.whatsapp.net') && lidToPn[id] !== pn) {
-                lidToPn[id] = pn;
-                if (contacts[id]) upsertContact({ id: pn, lid: id, ...contacts[id] });
-                saveContactsSoon();
-                mergeChat(id, pn);
-            }
-        }
+        const alt = key && !key.fromMe && (key.remoteJidAlt || key.senderPn);
+        if (alt) learnLid(id, alt);
         if (lidToPn[id]) return lidToPn[id];
     }
     return id;
+}
+// Contenido de un mensaje guardado, para reenviarlo si el otro móvil lo pide
+function findStoredMessage(key) {
+    const e = getChat(canonChat(key?.remoteJid || '')).find(x => x.id === key?.id);
+    if (!e) return undefined;
+    if (e.raw?.message) return e.raw.message;
+    return e.text != null ? { conversation: e.text } : undefined;
 }
 function toMs(ts) {
     if (!ts) return Date.now();
@@ -460,7 +471,6 @@ async function startSocket() {
         sock = makeWASocket({
             version,
             logger,
-            printQRInTerminal: true,
             auth:              state,
             browser:           ['Rubencho AI', 'Chrome', '120.0.0'],
             generateHighQualityLinkPreview: false,
@@ -469,7 +479,12 @@ async function startSocket() {
             // WhatsApp envía al vincular y el que se pide bajo demanda)
             shouldSyncHistoryMessage: h =>
                 h.syncType !== proto.HistorySync.HistorySyncType.FULL,
+            // Si un móvil no consigue descifrar un mensaje pide que se le reenvíe;
+            // Baileys guarda los recientes y, si no, se busca aquí
+            getMessage: async key => findStoredMessage(key),
         });
+
+        sock.ev.on('lid-mapping.update', ({ lid, pn }) => learnLid(lid, pn));
 
         sock.ev.on('contacts.update', updates => { for (const c of updates) upsertContact(c); });
         sock.ev.on('contacts.upsert', list => { for (const c of list) upsertContact(c); });
@@ -857,7 +872,9 @@ app.post('/send', async (req, res) => {
     const jid = resolveJid(to);
     if (!jid) return res.status(400).json({ ok:false, error:`No se pudo resolver: "${to}"` });
     try {
-        await sock.sendMessage(jid, { text: message });
+        const messageId = generateMessageIDV2(sock.user?.id);
+        sentByBridge.add(messageId);
+        await sock.sendMessage(jid, { text: message }, { messageId });
         res.json({ ok:true, message:`Mensaje enviado` });
     } catch(e) { res.status(500).json({ ok:false, error:e.message }); }
 });
@@ -871,13 +888,11 @@ app.post('/send_self', async (req, res) => {
         // Siempre enviar al JID base sin device suffix (número@s.whatsapp.net)
         // para que el mensaje vaya al "Saved Messages" estándar y no a un device específico
         const selfChatJid = jidNormalizedUser(selfJid);
-        const sent = await sock.sendMessage(selfChatJid, { text: message });
-        // Guardar el ID para que messages.upsert no lo procese como entrante
-        const sentId = sent?.key?.id;
-        if (sentId) {
-            sentByBridge.add(sentId);
-            pushLog('📤', `Enviado al chat propio (ID rastreado: ${sentId.substring(0,14)})`);
-        }
+        // El ID se guarda ANTES de enviar para que messages.upsert no lo procese como entrante
+        const messageId = generateMessageIDV2(sock.user?.id);
+        sentByBridge.add(messageId);
+        await sock.sendMessage(selfChatJid, { text: message }, { messageId });
+        pushLog('📤', `Enviado al chat propio (ID rastreado: ${messageId.substring(0,14)})`);
         res.json({ ok:true, message:'Mensaje enviado a tu chat contigo mismo' });
     } catch(e) { res.status(500).json({ ok:false, error:e.message }); }
 });

@@ -162,7 +162,7 @@ No hace falta instalar Python ni nada más: la aplicación lo lleva todo dentro.
 
 - **Cámara web**, para las fotos.
 - **Gráfica NVIDIA**, para transcribir mucho más rápido (ver *Gráfica NVIDIA* más abajo).
-- **Node.js 18 o superior** (<https://nodejs.org>), solo para WhatsApp.
+- **Node.js 20 o superior** (<https://nodejs.org>), solo para WhatsApp.
 - **Internet**: para reconocer la palabra clave con Google, buscar en la web,
   usar modelos *cloud* y descargar los modelos la primera vez.
 
@@ -436,7 +436,7 @@ El instalador no está en el repositorio (pesa ~190 MB): se publica en
 
 ### Ejecutar desde el código (sin compilar)
 
-Necesitas **Python 3.13** y, para WhatsApp, **Node.js 18+**:
+Necesitas **Python 3.13** y, para WhatsApp, **Node.js 20+**:
 
 ```bat
 cd "Código fuente"
