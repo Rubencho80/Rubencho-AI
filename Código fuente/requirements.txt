@@ -12,6 +12,7 @@ numpy
 # Transcripción de órdenes (Whisper) y reconocimiento offline (Vosk)
 faster-whisper
 vosk
+sounddevice          # micrófono continuo para la palabra clave local
 
 # Voz de la IA (TTS) — pywin32 para las voces OneCore de Windows
 pyttsx3

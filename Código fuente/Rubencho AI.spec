@@ -13,11 +13,12 @@ hiddenimports = [
     "pyttsx3.drivers", "pyttsx3.drivers.sapi5",
     "comtypes.client", "comtypes.stream",
     "win32com.client", "pythoncom", "pywintypes",
-    "pyaudio", "gtts", "pygame",
+    "pyaudio", "gtts", "pygame", "sounddevice",
 ]
 
 # Paquetes con ficheros propios (modelos, DLL, ejecutables) que hay que llevar enteros
-for pkg in ("faster_whisper", "ctranslate2", "vosk", "speech_recognition", "playwright"):
+for pkg in ("faster_whisper", "ctranslate2", "vosk", "speech_recognition", "playwright",
+            "_sounddevice_data"):
     d, b, h = collect_all(pkg)
     datas += d
     binaries += b

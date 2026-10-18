@@ -50,6 +50,18 @@ if not exist "whatsapp\node_modules\@whiskeysockets\baileys" (
     popd
 )
 
+rem Modelo de Vosk para la palabra clave local (va dentro del instalador, unos 40 MB)
+set "VOSK=vosk-model-small-es-0.42"
+if not exist "modelos\%VOSK%\am" (
+    echo Descargando el modelo de Vosk para la palabra clave...
+    if not exist modelos mkdir modelos
+    curl -L -o "modelos\%VOSK%.zip" "https://alphacephei.com/vosk/models/%VOSK%.zip"
+    if errorlevel 1 goto :error
+    tar -xf "modelos\%VOSK%.zip" -C modelos
+    if errorlevel 1 goto :error
+    del "modelos\%VOSK%.zip"
+)
+
 set "OUT=%~dp0_compilacion"
 echo.
 echo [1/2] Compilando la aplicacion con PyInstaller (unos minutos)...

@@ -13,6 +13,9 @@ venv/
 # Node.js (se instala con «npm ci» dentro de Código fuente/whatsapp)
 node_modules/
 
+# Modelo de Vosk (compilar.bat lo descarga si falta)
+Código fuente/modelos/
+
 # Datos personales: nunca se suben
 whatsapp_session/
 whatsapp_store/

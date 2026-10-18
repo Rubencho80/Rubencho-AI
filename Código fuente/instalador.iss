@@ -5,7 +5,7 @@
 #define AppExe   "Rubencho AI.exe"
 #define AppUMID  "RubenchoAI.Asistente"
 ; Versión interna: solo aparece en Propiedades → Detalles del instalador, nunca en el asistente
-#define AppBuild "1.3.1"
+#define AppBuild "1.3.2"
 #ifndef DistDir
   #define DistDir "_compilacion\dist\Rubencho AI"
 #endif
@@ -67,6 +67,8 @@ Type: filesandordirs; Name: "{app}\_internal"
 [Files]
 Source: "{#DistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "whatsapp\*"; DestDir: "{app}\whatsapp"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Modelo de Vosk para la palabra clave local (reconoce al instante, sin internet)
+Source: "modelos\*"; DestDir: "{app}\modelos"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"; AppUserModelID: "{#AppUMID}"; Comment: "Asistente de voz con inteligencia artificial"

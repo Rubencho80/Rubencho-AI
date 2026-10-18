@@ -43,7 +43,7 @@ Novedades de cada versión: [CHANGELOG.md](CHANGELOG.md).
 
 | Forma | Cómo |
 |---|---|
-| **Palabra clave** | Di la palabra (por defecto **«jarvis»**) y, tras el aviso, tu orden. Se puede elegir otra o una personalizada. |
+| **Palabra clave** | Di la palabra (por defecto **«asistente»**) y tu orden, con pausa o de corrido: «asistente, ¿qué hora es?». Te escucha al instante, sin internet. Se puede elegir otra o una personalizada. |
 | **Conversación continua** | Después de responder sigue escuchando unos segundos, sin repetir la palabra clave. Termina en silencio o diciendo la palabra de parada (por defecto «para»). |
 | **Push-to-Talk** | Mantén pulsada una tecla (por defecto **F9**) mientras hablas y suéltala para enviar. Se activa en Configuración. |
 | **Escuchar ahora** | Desde el menú del icono de la bandeja o del orbe. |
@@ -51,7 +51,10 @@ Novedades de cada versión: [CHANGELOG.md](CHANGELOG.md).
 | **WhatsApp** | Escribe en tu chat contigo mismo y te contesta allí (opcional). |
 
 La orden se transcribe con **Whisper** (sin internet y muy preciso). La palabra
-clave se reconoce con Google (con internet) o con **Vosk** (sin internet).
+clave se reconoce en tu PC con **Vosk**, mientras la dices: no espera a que acabes
+la frase ni a internet. Vosk conoce las palabras en español (asistente, oye,
+despierta…); para una inventada o en inglés (Jarvis, Rubencho) elige Google en
+Configuración → Reconocimiento.
 
 ### 🛠️ Lo que puede hacer por ti
 
@@ -163,7 +166,7 @@ No hace falta instalar Python ni nada más: la aplicación lo lleva todo dentro.
 - **Cámara web**, para las fotos.
 - **Gráfica NVIDIA**, para transcribir mucho más rápido (ver *Gráfica NVIDIA* más abajo).
 - **Node.js 20 o superior** (<https://nodejs.org>), solo para WhatsApp.
-- **Internet**: para reconocer la palabra clave con Google, buscar en la web,
+- **Internet**: para la palabra clave si eliges Google, buscar en la web,
   usar modelos *cloud* y descargar los modelos la primera vez.
 
 **¿Qué modelo de Ollama elegir?**
@@ -273,8 +276,8 @@ abierto, aparece la ventana **«Escribir a Rubencho AI»**.
 |---|---|
 | **General** | Inicio con Windows, popup siempre encima, pitido al detectar la palabra, conversación continua (tiempo y palabra de parada), idioma, **fecha y hora en cada mensaje** y el botón **Abrir la carpeta de datos**. |
 | **Palabra clave** | Palabra de activación (lista o personalizada). |
-| **Reconocimiento** | Motor de la palabra clave (Google/Vosk), tiempos de escucha, detección de fin de frase, motor de la orden (Whisper/Google/Vosk), modelo, dispositivo (auto/cpu/cuda), precisión y precarga de Whisper. |
-| **IA / Ollama** | Servidor y modelo, mantener el modelo cargado, tamaño de contexto, razonamiento, historial, herramientas (comandos, búsqueda web, navegador), **prompt de sistema** y botón para ver las instrucciones completas que recibe la IA. |
+| **Reconocimiento** | Motor de la palabra clave (local al instante con Vosk, o Google), tiempos de escucha, detección de fin de frase, motor de la orden (Whisper/Google/Vosk), modelo, dispositivo (auto/cpu/cuda), precisión y precarga de Whisper. |
+| **IA / Ollama** | Servidor y modelo, mantener el modelo cargado, tamaño de contexto, razonamiento, herramientas (comandos, búsqueda web, navegador), **prompt de sistema** y botón para ver las instrucciones completas que recibe la IA. |
 | **Control del PC** | Activarlo, elementos numerados, cuadrícula, captura de comprobación, resolución enviada, todas las **precauciones** (confirmación, freno con tecla y con esquina, parar al mover el ratón, juegos a pantalla completa, aviso, límite de pasos, pausa entre acciones) y el botón *Ver lo que ve la IA*. |
 | **Visión** | Permitir capturas y cámara, ocultar el orbe/popup al capturar, nº de cámara, tamaño de las imágenes, cuántas conservar, modelo de visión opcional, botones de prueba. |
 | **Memoria** | Activarla y ver, añadir, editar o borrar lo que recuerda. |
@@ -282,7 +285,7 @@ abierto, aparece la ventana **«Escribir a Rubencho AI»**.
 | **Orbe** | Visibilidad, opacidad, tamaño, **color de cada modo** (con vista previa) y posición. |
 | **Popup** | Colores, opacidad, tamaño, posición, cierre automático (0 = nunca) y cierre al terminar de hablar. |
 | **Voz IA** | Activar la voz, motor (Windows/Google), velocidad, volumen y voz, y si se leen también las respuestas a mensajes escritos. |
-| **Log** | Guardar las conversaciones en un .txt y cargarlas como historial al iniciar. |
+| **Conversación** | **Cuántos mensajes anteriores se le envían** (los más antiguos se olvidan solos) y si se olvidan los de hace más de X horas; guardar las conversaciones en un .txt, recuperar las últimas al iniciar y cuántas se guardan en el fichero. |
 | **WhatsApp** | Activar la integración, arrancar el puente, **responder o no a lo que te escribes en tu chat propio**, ver el QR, volver a vincular, **a qué contactos puede escribir**, si puede leer tus mensajes, ver fotos y escuchar audios, **máximo de mensajes que puede leer hacia atrás**, confirmación antes de enviar y envío de prueba. |
 | **Push-to-Talk** | Activar y elegir la tecla o combinación. |
 
@@ -349,10 +352,9 @@ Whisper se guardan en `%USERPROFILE%\.cache\huggingface\`.
   imágenes se envían a los servidores de Ollama. Con un modelo local todo se
   queda en tu PC. También puedes elegir en Configuración → Visión un modelo local
   solo para las imágenes.
-- **Palabra clave con Google**: las frases cortas que oye el micrófono se envían
-  a Google para reconocerlas. Con **Vosk** (Configuración → Reconocimiento) se
-  hace sin internet; descarga el modelo español pequeño de
-  <https://alphacephei.com/vosk/models> (`vosk-model-small-es-0.42`) e indica su carpeta.
+- **Palabra clave**: con el modo local (el predeterminado) el micrófono se
+  analiza en tu PC con Vosk y no sale nada de él hasta que dices la palabra. Si
+  eliges Google, las frases cortas que oye el micrófono se envían a Google.
 - **Comandos**: se bloquean los destructivos (borrar, formatear, apagar,
   registro…), cada comando tiene un límite de 15 s y todos quedan anotados en
   `cmd_log.txt`. Si no quieres que ejecute comandos, desactívalo en

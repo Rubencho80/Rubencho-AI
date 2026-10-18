@@ -3,6 +3,21 @@
 Las versiones se publican en [Releases](../../releases) con su instalador
 (`Instalar Rubencho AI.exe`).
 
+## 1.3.2 — 18-10-2026
+
+- **Palabra clave al instante**: se reconoce en el PC con Vosk mientras la dices,
+  sin esperar a que acabes la frase ni a Google. Ya no hay que hacer pausa:
+  «asistente, ¿qué hora es?» de corrido también funciona, porque la orden se graba
+  del mismo audio. Gasta muy poca CPU y no envía nada a internet. La palabra
+  clave predeterminada pasa a ser «asistente» (Vosk no conoce «jarvis»; con
+  palabras inventadas o en inglés se puede seguir usando Google).
+- El instalador incluye el modelo de Vosk en español (unos 40 MB).
+- **Memoria de la conversación** (Configuración → Conversación): número de
+  mensajes anteriores que se le envían (0–100, los más antiguos se olvidan solos),
+  opción para olvidar los de hace más de X horas y número de conversaciones que se
+  guardan en el log (las más antiguas se borran solas). Al iniciar solo se
+  recuperan del log los últimos mensajes, nunca el log entero.
+
 ## 1.3.1 — 18-10-2026
 
 - **WhatsApp: los mensajes enviados ya no se quedan en «Esperando el mensaje»**.

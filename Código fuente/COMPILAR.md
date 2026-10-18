@@ -15,6 +15,9 @@ aplicación instalada y conserva tus datos.
 - **Inno Setup 6**: `winget install JRSoftware.InnoSetup`.
 - **Node.js 20+**: las librerías del puente de WhatsApp van dentro del instalador.
   Si falta `whatsapp\node_modules`, `compilar.bat` las instala con `npm ci`.
+- **Modelo de Vosk** (palabra clave local, unos 40 MB): va dentro del instalador.
+  Si falta `modelos\vosk-model-small-es-0.42`, `compilar.bat` lo descarga de
+  <https://alphacephei.com/vosk/models>.
 
 ## Archivos
 

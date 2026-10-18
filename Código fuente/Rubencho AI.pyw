@@ -29,12 +29,13 @@ Novedades 1.2.0
   • Muchos arreglos (ver el resumen de cambios entregado con esta versión).
 """
 
-APP_VERSION = "1.3.1"      # interna: no se muestra al usuario (ver version_info.txt)
+APP_VERSION = "1.3.2"      # interna: no se muestra al usuario (ver version_info.txt)
 
 import tkinter as tk
 from tkinter import ttk, messagebox, colorchooser, filedialog, simpledialog
 import threading
 import queue
+import collections
 import json
 import os
 import sys
@@ -4476,14 +4477,14 @@ DEFAULT_CONFIG = {
     "always_on_top_popup":  True,
     "sound_feedback":       False,
     "language":             "es-ES",
-    "wake_word":            "jarvis",
+    "wake_word":            "asistente",
     "custom_wake_word":     "",
     "use_custom_wake_word": False,
     "wake_words_presets": [
         "jarvis","nova","nexus","atlas","echo",
         "computer","asistente","despierta","oye","hola"
     ],
-    "speech_engine":        "google",
+    "speech_engine":        "vosk",       # palabra clave: "vosk" (local, al instante) o "google"
     "command_engine":       "whisper",
     "whisper_model":        "small",
     "whisper_device":       "auto",
@@ -4507,7 +4508,8 @@ DEFAULT_CONFIG = {
     "ollama_num_ctx":       0,
     "ollama_preload":       True,
     "conversation_memory":  True,
-    "max_history_turns":    10,
+    "max_history_turns":    10,       # mensajes anteriores que se le envían (cada uno con su respuesta)
+    "history_max_hours":    0,        # olvidar los de hace más de N horas (0 = no)
     # Fecha y hora en cada mensaje
     "datetime_in_messages": True,
     # CMD / web / navegador
@@ -4578,6 +4580,7 @@ DEFAULT_CONFIG = {
     "log_enabled":          False,
     "log_file_path":        "",
     "log_load_as_memory":   False,
+    "log_max_entries":      0,        # conversaciones que se guardan en el log (0 = todas)
     "tts_enabled":          False,
     "tts_engine":           "pyttsx3",
     "tts_rate":             180,
@@ -5797,7 +5800,7 @@ class SettingsWindow(tk.Toplevel):
         ("orb",       "🔵  Orbe",             "_tab_orb"),
         ("popup",     "💬  Popup",            "_tab_popup"),
         ("tts",       "🔊  Voz IA",           "_tab_tts"),
-        ("log",       "📋  Log",              "_tab_log"),
+        ("log",       "💬  Conversación",     "_tab_log"),
         ("whatsapp",  "📱  WhatsApp",         "_tab_whatsapp"),
         ("ptt",       "⌨️  Push-to-Talk",     "_tab_ptt"),
     ]
@@ -6150,7 +6153,7 @@ class SettingsWindow(tk.Toplevel):
         pf.pack(fill='x', pady=8)
         ttk.Label(pf, text="Pronuncia esta palabra para activar Rubencho AI:"
                   ).pack(anchor='w', pady=(0,10))
-        cur     = self._cfg.get("wake_word","jarvis")
+        cur     = self._cfg.get("wake_word","asistente")
         wv      = tk.StringVar(value=cur)
         self._vars["wake_word"] = wv
         presets = self._cfg.get("wake_words_presets", DEFAULT_CONFIG["wake_words_presets"])
@@ -6175,23 +6178,25 @@ class SettingsWindow(tk.Toplevel):
                     "Usar esta palabra en vez de la lista", 1)
         self._info(p, [
             "💡  Palabras de 2-3 sílabas con consonantes fuertes funcionan mejor",
-            "💡  'Jarvis' y 'Nova' tienen el mejor equilibrio precisión/comodidad",
+            "⚡  En modo local (Reconocimiento) usa una palabra que exista en español: asistente,",
+            "      oye, despierta, Alcantarilla… Las inventadas o en inglés (Jarvis, Rubencho, Nova)",
+            "      no las conoce: con esas elige Google.",
         ])
 
     def _tab_voice(self, p):
         p.columnconfigure(1, weight=1)
-        ef = ttk.LabelFrame(p, text="Motor de reconocimiento", padding=12)
+        ef = ttk.LabelFrame(p, text="Motor de la palabra clave", padding=12)
         ef.pack(fill='x', pady=8)
         ev = self._v("speech_engine")
         for val, txt in [
-            ("google","🌐  Google Speech  (online, gratis, sin API key)"),
-            ("vosk",  "💻  Vosk           (offline, sin internet)"),
+            ("vosk",  "⚡  Local al instante  (Vosk, sin internet, recomendado)"),
+            ("google","🌐  Google Speech  (por internet; espera a que acabes la frase)"),
         ]:
             tk.Radiobutton(ef, text=txt, variable=ev, value=val,
                            bg=self.C["bg"], fg=self.C["text"],
                            selectcolor=self.C["deep"], activebackground=self.C["bg"],
                            font=("Segoe UI",10)).pack(anchor='w', pady=4)
-        vf = ttk.LabelFrame(p, text="Modelo Vosk  (solo si usas Vosk)", padding=10)
+        vf = ttk.LabelFrame(p, text="Modelo Vosk  (vacío = el que viene con Rubencho)", padding=10)
         vf.pack(fill='x', pady=8)
         vf.columnconfigure(1, weight=1)
         ttk.Label(vf, text="Carpeta:").grid(row=0, column=0, sticky='w', padx=8)
@@ -6210,7 +6215,7 @@ class SettingsWindow(tk.Toplevel):
         tf.columnconfigure(1, weight=1)
         for i,(key,lbl,frm,to,res) in enumerate([
             ("phrase_time_limit", "Tiempo máx. escucha (s):",    5.0, 30.0, 1.0),
-            ("wake_phrase_limit", "Límite frase activación (s):", 2.0,  6.0, 0.5),
+            ("wake_phrase_limit", "Frase activación, Google (s):", 2.0,  6.0, 0.5),
             ("silence_timeout",   "Timeout si no hay voz (s):",   0.5,  8.0, 0.5),
         ]):
             self._lbl(tf, lbl, i)
@@ -6305,7 +6310,9 @@ class SettingsWindow(tk.Toplevel):
         self._info(p, [
             "⭐  'Pausa para terminar frase' sigue siendo el ajuste más importante para el VAD",
             "⭐  faster-whisper small: mejor relación velocidad/precisión en español",
-            "💡  La palabra clave usa el motor de arriba (Google u offline con Vosk); la orden, el de abajo",
+            "⚡  En modo local te escucha en cuanto dices la palabra, y vale decirlo todo seguido:",
+            "      «asistente, ¿qué hora es?». Luego espera la «Pausa para terminar frase» y transcribe.",
+            "💡  La palabra clave usa el motor de arriba; la orden, el de abajo",
             "💡  Whisper ignora frases que se inventa con ruido («¡Gracias por ver el vídeo!»…)",
         ])
 
@@ -6364,10 +6371,9 @@ class SettingsWindow(tk.Toplevel):
         opt.columnconfigure(1, weight=1)
         self._check(opt, "ollama_no_think",
                     "⚡  Sin razonamiento interno  (respuestas más rápidas)", 0)
-        self._check(opt, "conversation_memory",
-                    "💬  Recordar el historial de la conversación (sesión)", 1)
-        self._lbl(opt, "Turnos a recordar:", 2)
-        self._scale(opt, "max_history_turns", 2, frm=2, to=50, res=1)
+        tk.Label(opt, text="💬  Los mensajes anteriores que recuerda se ajustan en «Conversación».",
+                 bg=self.C["bg"], fg=self.C["muted"], font=("Segoe UI", 8)
+                 ).grid(row=1, column=0, columnspan=2, sticky='w', padx=8, pady=2)
 
         # ── Herramientas ─────────────────────────────────────────────────────
         cmd_f = ttk.LabelFrame(p, text="🛠  Herramientas de la IA", padding=12)
@@ -7012,16 +7018,38 @@ class SettingsWindow(tk.Toplevel):
 
     def _tab_log(self, p):
         p.columnconfigure(1, weight=1)
-        lf = ttk.LabelFrame(p, text="📋  Registro de conversaciones", padding=12)
+        hf = ttk.LabelFrame(p, text="💬  Memoria de la conversación", padding=12)
+        hf.pack(fill='x', pady=6)
+        hf.columnconfigure(1, weight=1)
+        self._check(hf, "conversation_memory",
+                    "💬  Enviarle los mensajes anteriores de la conversación", 0)
+        self._lbl(hf, "Mensajes anteriores que se le envían:", 1)
+        self._scale(hf, "max_history_turns", 1, frm=0, to=100, res=1)
+        tk.Label(hf, text=("Cada mensaje tuyo va con su respuesta. Los más antiguos se olvidan solos.\n"
+                           "Cuantos más, más contexto tiene, pero más gasta y más tarda en responder."),
+                 bg=self.C["bg"], fg=self.C["muted"], font=("Segoe UI", 8), justify='left'
+                 ).grid(row=2, column=0, columnspan=2, sticky='w', padx=8, pady=(0, 4))
+        self._lbl(hf, "Olvidar los de hace más de (horas):", 3)
+        self._scale(hf, "history_max_hours", 3, frm=0, to=168, res=1)
+        tk.Label(hf, text="0 = no olvidarlos por tiempo (solo cuenta el máximo de arriba).",
+                 bg=self.C["bg"], fg=self.C["muted"], font=("Segoe UI", 8), justify='left'
+                 ).grid(row=4, column=0, columnspan=2, sticky='w', padx=8, pady=(0, 2))
+
+        lf = ttk.LabelFrame(p, text="📋  Registro de conversaciones (fichero .txt)", padding=12)
         lf.pack(fill='x', pady=6)
         lf.columnconfigure(1, weight=1)
         self._check(lf, "log_enabled",
-                    "💾  Guardar todas las conversaciones en un fichero .txt", 0)
+                    "💾  Guardar las conversaciones en un fichero .txt", 0)
         self._check(lf, "log_load_as_memory",
-                    "🧠  Cargar el log como memoria al iniciar  (recuerda días anteriores)", 1)
-        tk.Label(lf, text="⚠️  Cargar el log puede aumentar mucho el tiempo de respuesta si es muy largo.",
+                    "🧠  Al iniciar, recuperar del log los últimos mensajes  (recuerda días anteriores)", 1)
+        tk.Label(lf, text="Solo se recuperan los últimos (el máximo de arriba), nunca el log entero.",
                  bg=self.C["bg"], fg=self.C["muted"], font=("Segoe UI",8), justify='left'
                  ).grid(row=2, column=0, columnspan=2, sticky='w', padx=8, pady=2)
+        self._lbl(lf, "Conversaciones que se guardan:", 3)
+        self._scale(lf, "log_max_entries", 3, frm=0, to=2000, res=50)
+        tk.Label(lf, text="0 = guardarlas todas. Si pones un número, las más antiguas se borran solas.",
+                 bg=self.C["bg"], fg=self.C["muted"], font=("Segoe UI",8), justify='left'
+                 ).grid(row=4, column=0, columnspan=2, sticky='w', padx=8, pady=2)
         pf = ttk.LabelFrame(p, text="Ruta del fichero .txt", padding=12)
         pf.pack(fill='x', pady=6)
         pf.columnconfigure(1, weight=1)
@@ -7056,8 +7084,7 @@ class SettingsWindow(tk.Toplevel):
                       padx=12, pady=6, command=cmd).pack(side='left', padx=4)
         self._info(p, [
             "ℹ️  Formato del log:  fecha | tú dijiste → IA respondió",
-            "ℹ️  'Cargar como memoria' inyecta el log completo como contexto al inicio",
-            "ℹ️  Si el log es muy largo, recorta las entradas antiguas para mantener velocidad",
+            "ℹ️  El log es solo un registro: lo que se le envía a la IA lo decide «Memoria de la conversación»",
         ])
 
     def _tab_tts(self, p):
@@ -7739,7 +7766,8 @@ class SettingsWindow(tk.Toplevel):
             except ValueError: pass
         for key in ("orb_size","popup_width","popup_height",
                     "popup_custom_x","popup_custom_y","popup_auto_close",
-                    "orb_x","orb_y","max_history_turns","energy_threshold","tts_rate",
+                    "orb_x","orb_y","max_history_turns","history_max_hours","log_max_entries",
+                    "energy_threshold","tts_rate",
                     "popup_close_on_tts_end_delay","whatsapp_bridge_port","whatsapp_read_max",
                     "whisper_beam_size","ollama_num_ctx","camera_index","vision_max_side",
                     "captures_keep","reminder_sound_repeats","reminder_snooze_minutes",
@@ -7855,14 +7883,28 @@ def speak(text: str, engine: str = "pyttsx3", rate: int = 180, volume: float = 1
 
 
 # ── Log helpers ───────────────────────────────────────────────────────────────
-def append_log(path: str, user_msg: str, ai_msg: str):
+def append_log(path: str, user_msg: str, ai_msg: str, max_entries: int = 0):
+    """Añade una conversación al log. Con max_entries > 0 borra las más antiguas."""
     try:
         ts = time.strftime("%Y-%m-%d %H:%M")
-        entry = f"[{ts}]\nTú: {user_msg}\nIA:  {ai_msg}\n{'─'*60}\n"
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(entry)
+        sep = '─' * 60
+        entry = f"[{ts}]\nTú: {user_msg}\nIA:  {ai_msg}\n{sep}\n"
+        with _LOG_LOCK:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(entry)
+            if max_entries > 0:
+                raw = open(path, encoding="utf-8", errors="replace").read()
+                blocks = [b for b in raw.split(sep + "\n") if b.strip()]
+                if len(blocks) > max_entries:
+                    tmp = path + ".tmp"
+                    with open(tmp, "w", encoding="utf-8") as f:
+                        f.write("".join(b + sep + "\n" for b in blocks[-max_entries:]))
+                    os.replace(tmp, path)
     except Exception as e:
         print(f"[Log] Error al escribir: {e}")
+
+
+_LOG_LOCK = threading.Lock()
 
 
 def load_log_as_context(path: str, with_dates: bool = False, max_turns: int = 0) -> list:
@@ -7881,15 +7923,18 @@ def load_log_as_context(path: str, with_dates: bool = False, max_turns: int = 0)
             am = re.search(r"^IA:\s*(.+)", block, re.MULTILINE | re.DOTALL)
             if um and am:
                 user = um.group(1).strip()
-                if with_dates:
-                    dm = re.search(r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]", block)
-                    if dm:
-                        try:
-                            user = f"[{fecha_larga(datetime.strptime(dm.group(1), '%Y-%m-%d %H:%M'))}] {user}"
-                        except ValueError:
-                            pass
-                history.append({"role":"user",      "content": user})
-                history.append({"role":"assistant",  "content": am.group(1).strip()})
+                when = None                       # fecha de la conversación (para olvidar por tiempo)
+                dm = re.search(r"\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2})\]", block)
+                if dm:
+                    try:
+                        when = datetime.strptime(dm.group(1), '%Y-%m-%d %H:%M')
+                    except ValueError:
+                        pass
+                if with_dates and when:
+                    user = f"[{fecha_larga(when)}] {user}"
+                ts = when.timestamp() if when else None
+                history.append({"role": "user",      "content": user, "ts": ts})
+                history.append({"role": "assistant", "content": am.group(1).strip(), "ts": ts})
         if max_turns > 0:
             history = history[-max_turns * 2:]
         return history
@@ -7955,7 +8000,7 @@ class VoiceAIApp:
             self._history = load_log_as_context(
                 self.config["log_file_path"],
                 with_dates=bool(self.config.get("datetime_in_messages", True)),
-                max_turns=int(self.config.get("max_history_turns", 10)))
+                max_turns=max(1, int(self.config.get("max_history_turns", 10))))
             print(f"📖  Log cargado: {len(self._history)//2} turnos anteriores")
 
         # PTT state
@@ -8279,7 +8324,7 @@ class VoiceAIApp:
         cfg = self.config
         if cfg.get("use_custom_wake_word") and str(cfg.get("custom_wake_word", "")).strip():
             return str(cfg["custom_wake_word"]).strip()
-        return str(cfg.get("wake_word", "jarvis"))
+        return str(cfg.get("wake_word", "asistente"))
 
     @staticmethod
     def _contains_wake(phrase: str, wake: str) -> bool:
@@ -8287,7 +8332,27 @@ class VoiceAIApp:
         return bool(w) and w in _norm_text(phrase)      # sin tildes ni mayúsculas
 
     def _listener_loop(self):
+        """
+        Espera la palabra clave. Con el motor «vosk» la reconoce en local mientras
+        hablas (al instante); con «google», al acabar cada frase y por internet.
+        """
         print("🐢  Rubencho AI iniciado — esperando palabra clave...")
+        r = mic = None
+        retry_local = 0.0
+        while True:
+            if self.config.get("speech_engine", "vosk") == "vosk" and time.time() >= retry_local:
+                if self._stream_listener():
+                    continue                      # se ha cambiado de motor en la configuración
+                retry_local = time.time() + 60
+                print("ℹ️  Palabra clave local no disponible: se usa la clásica (se reintenta en 1 min)")
+            if mic is None:
+                r, mic = self._classic_mic()
+                if mic is None:
+                    time.sleep(5)
+                    continue
+            self._classic_listen_once(r, mic)
+
+    def _classic_mic(self):
         r = sr.Recognizer()
         r.energy_threshold = float(self.config.get("energy_threshold", 300))
         self._apply_vad(r)
@@ -8302,46 +8367,223 @@ class VoiceAIApp:
                 mic = sr.Microphone()
             except Exception as e2:
                 print(f"❌  No hay micrófono disponible: {e2}")
+                return r, None
+        return r, mic
+
+    def _classic_listen_once(self, r, mic):
+        """Palabra clave «clásica»: escucha una frase entera y la reconoce (Google)."""
+        try:
+            # Mientras se procesa una orden, hay conversación continua o PTT,
+            # no se escucha la palabra clave (evita dos micrófonos y peticiones dobles)
+            if self._is_busy():
+                time.sleep(0.25)
+                return
+            cfg  = self.config
+            wake = self._wake_word()
+            phrase = self._sr_listen(r, mic,
+                phrase_time_limit=float(cfg.get("wake_phrase_limit", 3.0)))
+            if not phrase or self._is_busy() or not self._contains_wake(phrase, wake):
+                return
+            self._listening = True
+
+            print(f"✅  '{wake}' detectado → escuchando comando...")
+            self._ui_q.put(("orb_state", "listening"))
+            if cfg.get("sound_feedback", False):
+                play_sound("activacion", wait=True)
+            self._apply_vad(r)
+            command = self._capture_command(r, mic)
+
+            if not command:
+                print("⚠️  Sin comando.")
+                self._ui_q.put(("orb_state", "idle"))
+                self._listening = False
                 return
 
-        while True:
+            print(f"📝  Comando: {command}")
+            threading.Thread(
+                target=self._stream_ollama,
+                args=(command,), kwargs={"origin": "voz"},
+                daemon=True).start()
+
+        except Exception as e:
+            print(f"[Listener] {e}")
+            self._listening = False
+            time.sleep(1)
+
+    # ── Palabra clave local en tiempo real (Vosk) ────────────────────────────
+    def _stream_listener(self) -> bool:
+        """
+        Escucha continua con Vosk: reconoce la palabra clave mientras la dices (sin
+        esperar a que acabes la frase ni a internet) y graba la orden del mismo audio,
+        así que también vale decirlo de corrido: «asistente, ¿qué hora es?».
+        Devuelve True si se ha cambiado de motor en la configuración y False si falla.
+        """
+        try:
+            import sounddevice as sd
+            from vosk import KaldiRecognizer
+        except ImportError as e:
+            print(f"⚠️  Palabra clave local: falta {e.name} (pip install vosk sounddevice)")
+            return False
+        model = self._get_vosk_model()
+        if model is None:
+            print("⚠️  Palabra clave local: no se encuentra el modelo de Vosk")
+            return False
+        RATE, BLOCK = 16000, 1600                       # bloques de 0,1 s
+        audio_q: queue.Queue = queue.Queue(maxsize=600)
+
+        def on_audio(indata, frames, t, status):
             try:
-                # Mientras se procesa una orden, hay conversación continua o PTT,
-                # no se escucha la palabra clave (evita dos micrófonos y peticiones dobles)
-                if self._is_busy():
-                    time.sleep(0.25)
-                    continue
-                cfg  = self.config
-                wake = self._wake_word()
-                phrase = self._sr_listen(r, mic,
-                    phrase_time_limit=float(cfg.get("wake_phrase_limit", 3.0)))
-                if not phrase or self._is_busy() or not self._contains_wake(phrase, wake):
-                    continue
-                self._listening = True
+                audio_q.put_nowait(bytes(indata))
+            except queue.Full:
+                pass
 
-                print(f"✅  '{wake}' detectado → escuchando comando...")
-                self._ui_q.put(("orb_state", "listening"))
-                if cfg.get("sound_feedback", False):
-                    play_sound("activacion", wait=True)
-                self._apply_vad(r)
-                command = self._capture_command(r, mic)
+        gap  = max(1, round(float(self.config.get("non_speaking_duration", 0.5)) / 0.1))
+        rec  = KaldiRecognizer(model, RATE)
+        ring = collections.deque(maxlen=40)             # últimos 4 s: (nº de bloque, audio, ¿voz?)
+        seq = utt_start = 0
+        quiet, noise, was_busy = gap, None, False
+        try:
+            with sd.RawInputStream(samplerate=RATE, blocksize=BLOCK, channels=1,
+                                   dtype="int16", callback=on_audio):
+                print(f"✅  Palabra clave local activa («{self._wake_word()}»): te escucho al instante")
+                while True:
+                    if self.config.get("speech_engine", "vosk") != "vosk":
+                        return True
+                    try:
+                        data = audio_q.get(timeout=3)
+                    except queue.Empty:
+                        raise RuntimeError("el micrófono no envía audio")
+                    # Mientras responde, hay conversación continua o PTT, el audio se descarta
+                    if self._is_busy():
+                        if not was_busy:
+                            rec.Reset()
+                            ring.clear()
+                            was_busy = True
+                        continue
+                    was_busy = False
+                    seq += 1
+                    loud, noise = self._chunk_is_voice(data, noise)
+                    if loud:
+                        if quiet >= gap:
+                            utt_start = seq                 # empieza una frase nueva
+                        quiet = 0
+                    else:
+                        quiet += 1
+                    ring.append((seq, data, loud))
+                    final = rec.AcceptWaveform(data)
+                    res = json.loads(rec.Result() if final else rec.PartialResult())
+                    wake = self._wake_word()
+                    if not self._contains_wake(res.get("text" if final else "partial", ""), wake):
+                        continue
 
-                if not command:
-                    print("⚠️  Sin comando.")
-                    self._ui_q.put(("orb_state", "idle"))
-                    self._listening = False
-                    continue
+                    print(f"✅  '{wake}' detectado → escuchando comando...")
+                    self._listening = True
+                    self._ui_q.put(("orb_state", "listening"))
+                    # El audio desde 0,3 s antes de que empezaras a hablar: así la orden
+                    # dicha de corrido con la palabra clave no pierde el principio
+                    first = max(utt_start - 3, seq - 39)
+                    pre = [d for n, d, _ in ring if n >= first]
+                    try:
+                        command = self._stream_capture_command(audio_q, pre, noise, wake)
+                    except Exception as e:
+                        print(f"[Escucha] {e}")
+                        command = ""
+                    rec.Reset()
+                    ring.clear()
+                    quiet = gap
+                    if not command:
+                        print("⚠️  Sin comando.")
+                        self._ui_q.put(("orb_state", "idle"))
+                        self._listening = False
+                        continue
+                    print(f"📝  Comando: {command}")
+                    threading.Thread(
+                        target=self._stream_ollama,
+                        args=(command,), kwargs={"origin": "voz"},
+                        daemon=True).start()
+        except Exception as e:
+            print(f"⚠️  Palabra clave local: {e}")
+            self._listening = False
+            return False
 
-                print(f"📝  Comando: {command}")
-                threading.Thread(
-                    target=self._stream_ollama,
-                    args=(command,), kwargs={"origin": "voz"},
-                    daemon=True).start()
+    def _chunk_is_voice(self, data: bytes, noise):
+        """¿Hay voz en este trozo de audio? (por volumen, con los ajustes de Reconocimiento)"""
+        import numpy as np
+        x = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+        rms = float(np.sqrt(np.mean(x * x))) if x.size else 0.0
+        # Nivel del ruido de fondo: baja rápido y sube despacio (la voz no lo sube)
+        noise = rms if noise is None else (
+            noise * 0.7 + rms * 0.3 if rms < noise else noise * 0.995 + rms * 0.005)
+        cfg = self.config
+        if cfg.get("dynamic_energy_threshold", True):
+            thr = max(150.0, noise * float(cfg.get("dynamic_energy_ratio", 1.5)) * 1.5)
+        else:
+            thr = float(cfg.get("energy_threshold", 300))
+        return rms > thr, noise
 
-            except Exception as e:
-                print(f"[Listener] {e}")
-                self._listening = False
-                time.sleep(1)
+    def _stream_capture_command(self, audio_q, pre: list, noise, wake: str) -> str:
+        """Graba la orden (después de la palabra clave) del flujo de audio y la transcribe."""
+        cfg    = self.config
+        pause  = float(cfg.get("pause_threshold", 1.8))
+        wait   = float(cfg.get("silence_timeout", 2.5))
+        maxlen = float(cfg.get("phrase_time_limit", 15.0))
+        chunks = list(pre)
+        # El pitido y el final de la palabra clave no cuentan como voz de la orden
+        neutral = 0.2
+        if cfg.get("sound_feedback", False):
+            neutral = max(neutral, self._sound_seconds("activacion") + 0.1)
+            play_sound("activacion")                    # sin esperar: se sigue grabando
+        spoke = maybe = False
+        quiet = t = 0.0
+        while t < maxlen:
+            try:
+                data = audio_q.get(timeout=2)
+            except queue.Empty:
+                break
+            chunks.append(data)
+            t += 0.1
+            loud, noise = self._chunk_is_voice(data, noise)
+            if t <= neutral:
+                maybe = maybe or (loud and t > 0.2)     # ¿orden muy corta dicha de corrido?
+                continue
+            if loud:
+                spoke, quiet = True, 0.0
+            else:
+                quiet += 0.1
+                if spoke and quiet >= pause:
+                    break
+                if not spoke and t >= wait + neutral:
+                    break
+        if not (spoke or maybe):
+            return ""
+        self._ui_q.put(("orb_state", "thinking"))      # transcribiendo…
+        audio = sr.AudioData(b"".join(chunks), 16000, 2)
+        text = (self._recognize(audio, cfg.get("command_engine", "whisper")) or "").strip()
+        return self._strip_wake(text, wake)
+
+    @staticmethod
+    def _strip_wake(text: str, wake: str) -> str:
+        """Quita la palabra clave del principio: «Oye asistente, ¿qué hora es?» → «¿qué hora es?»."""
+        import difflib
+        target = _norm_text(wake)
+        n = len(target.split())
+        words = list(re.finditer(r"\w+", text or ""))
+        if not target or not words:
+            return (text or "").strip()
+        for i in range(min(3, len(words) - n + 1)):     # entre las primeras palabras
+            cand = _norm_text(" ".join(m.group() for m in words[i:i + n]))
+            if difflib.SequenceMatcher(None, cand, target).ratio() >= 0.75:
+                return text[words[i + n - 1].end():].lstrip(" ,.;:!-–—…").strip()
+        return text.strip()
+
+    @staticmethod
+    def _sound_seconds(name: str) -> float:
+        try:
+            import wave
+            with wave.open(str(_sound_file(name)), "rb") as w:
+                return w.getnframes() / float(w.getframerate())
+        except Exception:
+            return 0.3
 
     def _capture_command(self, r, mic) -> str:
         """Graba la orden y la transcribe con el motor elegido."""
@@ -8577,9 +8819,27 @@ class VoiceAIApp:
             return ""
 
     # ── Vosk (modelo en caché: antes se cargaba en CADA frase) ───────────────
+    def _vosk_model_dir(self) -> str:
+        """Carpeta del modelo de Vosk: la configurada o, si no existe, la que venga con Rubencho."""
+        def is_model(d: Path) -> bool:
+            return (d / "am").is_dir() and (d / "conf").is_dir()
+        path = str(self.config.get("vosk_model_path", "") or "").strip()
+        if path and is_model(Path(path)):
+            return path
+        here = (Path(sys.executable).resolve().parent if getattr(sys, "frozen", False)
+                else Path(os.path.abspath(__file__)).parent)
+        for base in (here / "modelos", here, here.parent, APP_DIR / "modelos"):
+            try:
+                for d in sorted(base.glob("vosk-model*")):
+                    if is_model(d):
+                        return str(d)
+            except OSError:
+                pass
+        return ""
+
     def _get_vosk_model(self):
-        path = str(self.config.get("vosk_model_path", "") or "")
-        if not path or not os.path.isdir(path):
+        path = self._vosk_model_dir()
+        if not path:
             return None
         with self._vosk_lock:
             if self._vosk_model is not None and self._vosk_model_path == path:
@@ -9588,6 +9848,28 @@ class VoiceAIApp:
         finally:
             self._listening = False
 
+    def _history_for_request(self, cfg) -> list:
+        """
+        Mensajes anteriores que se le envían a la IA: como mucho los últimos
+        «max_history_turns» (cada uno con su respuesta) y, si se ha puesto, solo
+        los de las últimas «history_max_hours» horas.
+        """
+        try:
+            turns = max(0, int(float(cfg.get("max_history_turns", 10))))
+        except (TypeError, ValueError):
+            turns = 10
+        hist = list(self._history[-turns * 2:]) if turns else []
+        try:
+            hours = float(cfg.get("history_max_hours", 0) or 0)
+        except (TypeError, ValueError):
+            hours = 0
+        if hours > 0:
+            limit = time.time() - hours * 3600
+            hist = [m for m in hist if (m.get("ts") or limit) >= limit]
+        while hist and hist[0].get("role") != "user":   # que empiece por un mensaje tuyo
+            hist.pop(0)
+        return [{k: v for k, v in m.items() if k != "ts"} for m in hist]
+
     # ── Petición a la IA (streaming) ─────────────────────────────────────────
     def _stream_ollama(self, prompt: str, ptt_mode: bool = False, origin: str = "voz",
                        display: str = None, result: dict = None) -> str:
@@ -9636,7 +9918,7 @@ class VoiceAIApp:
         if cfg.get("datetime_in_messages", True):
             user_content = f"[{fecha_larga()}] {prompt}"
         user_entry = {"role": "user", "content": user_content}
-        history    = list(self._history[-max_hist * 2:]) if use_mem else []
+        history    = self._history_for_request(cfg) if use_mem else []
         messages   = ([{"role": "system", "content": self._system_prompt(cfg)}]
                       + history + [user_entry])
         ctx = {"flags": flags, "notes": [], "done": set(),
@@ -9812,17 +10094,19 @@ class VoiceAIApp:
         # Historial: el mensaje con su fecha y la respuesta con sus etiquetas de
         # memoria/recordatorio (así la IA ve cómo las usó)
         if use_mem and clean:
-            self._history.append(user_entry)
-            self._history.append({"role": "assistant",
+            now = time.time()
+            self._history.append({**user_entry, "ts": now})
+            self._history.append({"role": "assistant", "ts": now,
                                   "content": _LEADING_STAMP_RE.sub("", final_response).strip()})
             if len(self._history) > max_hist * 2:
-                self._history = self._history[-max_hist * 2:]
+                self._history = self._history[-max_hist * 2:] if max_hist > 0 else []
 
         # Log
         if cfg.get("log_enabled") and cfg.get("log_file_path") and clean:
             threading.Thread(
                 target=append_log,
-                args=(cfg["log_file_path"], prompt, clean),
+                args=(cfg["log_file_path"], prompt, clean,
+                      int(cfg.get("log_max_entries", 0) or 0)),
                 daemon=True).start()
 
         if result is not None:
@@ -10431,6 +10715,16 @@ def _run_diagnostics() -> int:
     check("VAD de Whisper", lambda: __import__("faster_whisper.vad", fromlist=["x"]).get_vad_model() is not None)
     check("GPU para Whisper", lambda: cuda_whisper_available())
     check("vosk", lambda: bool(__import__("vosk").Model))
+    check("sounddevice (micrófono continuo)", lambda: __import__("sounddevice").query_devices(kind="input")["name"])
+
+    def vosk_model():
+        import types
+        d = VoiceAIApp._vosk_model_dir(types.SimpleNamespace(config=load_config()))
+        if not d:
+            raise RuntimeError("no se encuentra la carpeta del modelo")
+        __import__("vosk").Model(d)
+        return Path(d).name
+    check("Modelo de Vosk (palabra clave local)", vosk_model)
     check("opencv (cámara)", lambda: __import__("cv2").__version__)
     check("pyttsx3 (voz)", lambda: len(__import__("pyttsx3").init().getProperty("voices")))
     check("gTTS", lambda: bool(__import__("gtts").gTTS))
