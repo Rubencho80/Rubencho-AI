@@ -29,7 +29,7 @@ Novedades 1.2.0
   • Muchos arreglos (ver el resumen de cambios entregado con esta versión).
 """
 
-APP_VERSION = "1.3.3"      # interna: no se muestra al usuario (ver version_info.txt)
+APP_VERSION = "1.3.4"      # interna: no se muestra al usuario (ver version_info.txt)
 
 import tkinter as tk
 from tkinter import ttk, messagebox, colorchooser, filedialog, simpledialog
@@ -1455,12 +1455,16 @@ def _wa_system_addon(cfg: dict) -> str:
             "   si basta con lo último; más si pide un resumen de la conversación.",
             "3. Al contar lo recibido, resume con naturalidad: quién, qué y cuándo. Describe las",
             "   fotos y resume los audios; no leas todo literal salvo que te lo pida.",
+            "4. Si te vuelve a preguntar por los mensajes de alguien («¿y ahora qué dice?», «¿te ha",
+            "   contestado?», «¿qué me ha dicho?» otra vez), VUELVE A LEERLOS con <WA_LEER>: puede",
+            "   haber mensajes nuevos y lo que leíste antes ya no vale. Nunca cuentes lo que pone un",
+            "   mensaje sin haberlo leído en esta misma respuesta.",
         ]
     lines += [
-        f"{4 if read else 2}. Lo que va dentro de <WA> se envía tal cual: escríbelo como si lo escribiera",
+        f"{5 if read else 2}. Lo que va dentro de <WA> se envía tal cual: escríbelo como si lo escribiera",
         "   el usuario (en primera persona, sin firmar como IA) y solo cuando te lo pida.",
-        f"{5 if read else 3}. Nunca envíes a grupos ni inventes mensajes recibidos: espera al resultado.",
-        f"{6 if read else 4}. No conoces ni des números de teléfono. Si el resultado dice que no tienes",
+        f"{6 if read else 3}. Nunca envíes a grupos ni inventes mensajes recibidos: espera al resultado.",
+        f"{7 if read else 4}. No conoces ni des números de teléfono. Si el resultado dice que no tienes",
         "   permiso para escribir a alguien, díselo al usuario (se cambia en Configuración → WhatsApp).",
         "",
         "Ejemplos:",
@@ -2114,6 +2118,42 @@ _SINGLE_TAG_RE = re.compile(rf"</?({_TAG_NAMES_ALT})\b[^>]*?/?>", re.IGNORECASE)
 _LEADING_STAMP_RE = re.compile(
     r"^\s*\[(?:🕐\s*)?(?:lunes|martes|miércoles|miercoles|jueves|viernes|sábado|sabado|domingo)"
     r"[^\]]{0,60}\]\s*", re.IGNORECASE)
+
+
+def action_tags(text: str) -> list:
+    """Las etiquetas de acción de una respuesta, en orden y tal y como las escribió la IA."""
+    if not text:
+        return []
+    found = [(m.start(), m.group(0)) for m in _PAIRED_TAG_RE.finditer(text)]
+    rest = _PAIRED_TAG_RE.sub(lambda m: " " * len(m.group(0)), text)
+    found += [(m.start(), m.group(0)) for m in _SINGLE_TAG_RE.finditer(rest)
+              if not m.group(0).startswith("</")]
+    return [t for _, t in sorted(found)]
+
+
+def tools_trace(tags: list) -> str:
+    """
+    Resumen de las herramientas usadas en una respuesta, para el historial. Sin los
+    resultados (ocuparían mucho y caducan); el control del PC, solo contado, para que
+    nunca repita clics con coordenadas antiguas.
+    """
+    out, pc = [], 0
+    for t in tags:
+        name = re.match(r"<\s*([\wÁÉÍÓÚáéíóú]+)", t)
+        name = name.group(1).upper() if name else ""
+        if name.startswith("PC_") and name != "PC_VER":
+            pc += 1
+            continue
+        if len(t) > 300:                               # mensajes o comandos muy largos
+            m = re.match(r"(<[^>]*>)(.*)(</[^>]+>)\s*$", t, re.DOTALL)
+            t = (m.group(1) + m.group(2)[:200] + "…" + m.group(3)) if m else t[:300] + "…"
+        if not out or out[-1] != t:
+            out.append(t)
+    if len(out) > 6:
+        out = out[:3] + [f"(… {len(out) - 5} herramientas más …)"] + out[-2:]
+    if pc:
+        out.append(f"({pc} acciones de ratón y teclado en el PC)")
+    return "\n".join(out)
 
 
 def strip_action_tags(text: str) -> str:
@@ -9884,6 +9924,7 @@ class VoiceAIApp:
             if pc is not None and pc.stop_event.is_set() and ctx.get("pc_stop_told"):
                 break                     # ya se le dijo que parara y sigue pidiendo acciones
             iteration += 1
+            ctx.setdefault("trace", []).extend(action_tags(current))   # para el historial
             sep = "─" * 38
             post(f"\n{sep}\n🔄  *Paso {iteration}*\n")
             print(f"🔄  [Agente] Paso {iteration}/{max_iterations}")
@@ -10025,24 +10066,36 @@ class VoiceAIApp:
     def _history_for_request(self, cfg) -> list:
         """
         Mensajes anteriores que se le envían a la IA: como mucho los últimos
-        «max_history_turns» (cada uno con su respuesta) y, si se ha puesto, solo
-        los de las últimas «history_max_hours» horas.
+        «max_history_turns» (cada uno con su respuesta y las herramientas que usó)
+        y, si se ha puesto, solo los de las últimas «history_max_hours» horas.
         """
         try:
             turns = max(0, int(float(cfg.get("max_history_turns", 10))))
         except (TypeError, ValueError):
             turns = 10
-        hist = list(self._history[-turns * 2:]) if turns else []
+        groups = self._turn_groups(self._history)[-turns:] if turns else []
         try:
             hours = float(cfg.get("history_max_hours", 0) or 0)
         except (TypeError, ValueError):
             hours = 0
         if hours > 0:
             limit = time.time() - hours * 3600
-            hist = [m for m in hist if (m.get("ts") or limit) >= limit]
+            groups = [g for g in groups if (g[0].get("ts") or limit) >= limit]
+        hist = [m for g in groups for m in g]
         while hist and hist[0].get("role") != "user":   # que empiece por un mensaje tuyo
             hist.pop(0)
-        return [{k: v for k, v in m.items() if k != "ts"} for m in hist]
+        return [{k: v for k, v in m.items() if k not in ("ts", "tool_results")} for m in hist]
+
+    @staticmethod
+    def _turn_groups(history: list) -> list:
+        """Agrupa el historial por turnos: cada mensaje tuyo con todo lo que vino después."""
+        groups = []
+        for m in history:
+            if not groups or (m.get("role") == "user" and not m.get("tool_results")):
+                groups.append([m])
+            else:
+                groups[-1].append(m)
+        return groups
 
     # ── Petición a la IA (streaming) ─────────────────────────────────────────
     def _stream_ollama(self, prompt: str, ptt_mode: bool = False, origin: str = "voz",
@@ -10269,11 +10322,22 @@ class VoiceAIApp:
         # memoria/recordatorio (así la IA ve cómo las usó)
         if use_mem and clean:
             now = time.time()
-            self._history.append({**user_entry, "ts": now})
-            self._history.append({"role": "assistant", "ts": now,
-                                  "content": _LEADING_STAMP_RE.sub("", final_response).strip()})
-            if len(self._history) > max_hist * 2:
-                self._history = self._history[-max_hist * 2:] if max_hist > 0 else []
+            turn = [{**user_entry, "ts": now}]
+            # Qué herramientas usó (sin los resultados): así, si le vuelves a preguntar
+            # «¿y ahora qué dice?», las vuelve a usar en vez de contestar de memoria
+            trace = tools_trace(ctx.get("trace") or [])
+            if trace:
+                turn += [{"role": "assistant", "ts": now, "content": trace},
+                         {"role": "user", "ts": now, "tool_results": True, "content": (
+                             f"(Aquí estaban los resultados de esas herramientas, de las "
+                             f"{datetime.now():%H:%M}. No se guardan en el historial: si te vuelven "
+                             f"a preguntar por lo mismo, vuelve a usar la herramienta.)")}]
+            turn.append({"role": "assistant", "ts": now,
+                         "content": _LEADING_STAMP_RE.sub("", final_response).strip()})
+            self._history.extend(turn)
+            groups = self._turn_groups(self._history)
+            if len(groups) > max_hist:
+                self._history = [m for g in groups[-max_hist:] for m in g] if max_hist > 0 else []
 
         # Log
         if cfg.get("log_enabled") and cfg.get("log_file_path") and clean:

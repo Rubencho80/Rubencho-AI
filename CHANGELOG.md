@@ -3,6 +3,20 @@
 Las versiones se publican en [Releases](../../releases) con su instalador
 (`Instalar Rubencho AI.exe`).
 
+## 1.3.4 — 20-10-2026
+
+- **Ya no contesta de memoria cuando le vuelves a preguntar** («¿y ahora qué
+  dice?», «¿me ha contestado?»). El historial solo guardaba tu pregunta y la
+  respuesta final, así que la IA veía que había contado unos mensajes sin
+  mirar nada y a la segunda copiaba ese ejemplo: a veces se inventaba lo que
+  ponían. Ahora el historial guarda también qué herramientas usó (sin los
+  resultados, que caducan) y una nota de que, para volver a saberlo, hay que
+  usarlas otra vez. El control del PC solo se apunta contado, para que nunca
+  repita clics antiguos. Además, una regla nueva de WhatsApp: si le vuelves a
+  preguntar por los mensajes de alguien, los vuelve a leer.
+- En la prueba, a la segunda pregunta volvía a mirar WhatsApp 4 de cada 8
+  veces; ahora, todas.
+
 ## 1.3.3 — 19-10-2026
 
 - **Tareas de la IA**: recordatorios que la IA se pone a sí misma. Al llegar la

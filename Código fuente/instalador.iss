@@ -5,7 +5,7 @@
 #define AppExe   "Rubencho AI.exe"
 #define AppUMID  "RubenchoAI.Asistente"
 ; Versión interna: solo aparece en Propiedades → Detalles del instalador, nunca en el asistente
-#define AppBuild "1.3.3"
+#define AppBuild "1.3.4"
 #ifndef DistDir
   #define DistDir "_compilacion\dist\Rubencho AI"
 #endif
