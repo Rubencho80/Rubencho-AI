@@ -29,7 +29,7 @@ Novedades 1.2.0
   • Muchos arreglos (ver el resumen de cambios entregado con esta versión).
 """
 
-APP_VERSION = "1.3.4"      # interna: no se muestra al usuario (ver version_info.txt)
+APP_VERSION = "1.3.5"      # interna: no se muestra al usuario (ver version_info.txt)
 
 import tkinter as tk
 from tkinter import ttk, messagebox, colorchooser, filedialog, simpledialog
@@ -1857,6 +1857,57 @@ Ejemplos:
 {recordatorios}
 """
 
+_THINK_SYSTEM_ADDON = """
+─── PENSAR ANTES DE ACTUAR ──────────────────────────────────────────────────
+Normalmente respondes directamente, sin razonar por dentro (es más rápido).
+Si de verdad lo necesitas, puedes pensar con calma antes de responder: escribe
+SOLO esta etiqueta, sin nada más, y se te volverá a hacer la misma petición con
+tu modo de razonamiento activado (tarda unos segundos más):
+
+    <PENSAR/>
+
+Úsala SOLO cuando:
+  • Sea realmente complicado: un problema de lógica o de varios pasos, un cálculo
+    o razonamiento difícil, planificar algo largo o con muchas condiciones,
+    programar, o una tarea larga de control del PC o del navegador.
+  • Ya lo intentaste y salió mal (una herramienta falló, el resultado no es el
+    esperado o el usuario te dice que te has equivocado) y ves que no es trivial.
+NO la uses para lo normal: saludos, charlar, preguntas sencillas, datos que ya
+sabes, abrir un programa, buscar en internet, enviar o leer un WhatsApp, poner un
+recordatorio o guardar algo en la memoria. Eso hazlo directamente.
+
+Antes de responder, pregúntate: «¿podría equivocarme si contesto sin pensarlo?».
+Si la respuesta es sí, tu respuesta entera es <PENSAR/>. Las respuestas rápidas a
+problemas difíciles suelen tener errores.
+
+Ejemplos:
+  "Tengo tres cajas con las etiquetas mal puestas… ¿cómo las reetiqueto?" → "<PENSAR/>"
+  "Hazme un plan de estudio para mis tres exámenes, con estas condiciones…" → "<PENSAR/>"
+  "Escríbeme un programa que lea un archivo y calcule…"                     → "<PENSAR/>"
+  "Dos trenes salen a distintas horas… ¿dónde se cruzan?"                   → "<PENSAR/>"
+  "Está mal, repásalo" (y no era algo trivial)                              → "<PENSAR/>"
+  "¿Cuál es la capital de Francia?"   → "París." (directo)
+  "Dile a Mamá que llego tarde"       → "Se lo digo. <WA to="Mamá">Llego tarde</WA>" (directo)
+  "Recuérdame en 10 minutos la ropa"  → "Hecho. <RECORDATORIO cuando="+10m">…</RECORDATORIO>" (directo){memoria}
+"""
+
+_THINK_MEMORY_HINT = """
+Si algo te salió mal por ser difícil, guárdalo en la memoria («Para X conviene
+pensar antes») y, la próxima vez que te pidan algo parecido, piensa desde el
+principio."""
+
+_THINK_ON_NOTE = ("\n\n[MODO RAZONAMIENTO ACTIVADO: piensa con calma antes de responder o "
+                  "actuar. No escribas <PENSAR/>.]")
+
+
+def think_mode(cfg: dict) -> str:
+    """«never», «always» o «auto» (la IA decide). Antes solo existía ollama_no_think."""
+    m = str(cfg.get("ollama_think_mode") or "").strip().lower()
+    if m in ("never", "always", "auto"):
+        return m
+    return "never" if cfg.get("ollama_no_think", True) else "always"
+
+
 _AI_TASKS_SYSTEM_ADDON = """
 ─── TAREAS PARA TI MISMO ────────────────────────────────────────────────────
 Además de los recordatorios para el usuario, puedes programarte TAREAS a ti
@@ -2006,6 +2057,7 @@ def _build_system_prompt(base: str, cmd_enabled: bool,
                          memory_enabled: bool = False,
                          reminders_enabled: bool = False,
                          ai_tasks_enabled: bool = False,
+                         think_auto: bool = False,
                          memory_block: str = "",
                          reminders_block: str = "",
                          ai_tasks_block: str = "",
@@ -2047,6 +2099,8 @@ def _build_system_prompt(base: str, cmd_enabled: bool,
     if memory_enabled:
         tools.append(_MEMORY_SYSTEM_ADDON.format(
             memoria=memory_block or "(La memoria está vacía.)"))
+    if think_auto:
+        tools.append(_THINK_SYSTEM_ADDON.format(memoria=_THINK_MEMORY_HINT if memory_enabled else ""))
     if tools:
         parts.append(_TOOLS_HEADER)
         parts.extend(tools)
@@ -2070,6 +2124,7 @@ _REM_ADD_PAT  = re.compile(r"<RECORDATORIO(?P<attrs>(?:\s[^>]*)?)>(?P<body>.*?)<
                            re.IGNORECASE | re.DOTALL)
 _REM_DEL_PAT  = re.compile(r"<RECORDATORIO_BORRAR\b(?P<attrs>[^>]*?)(?:/>|>(?P<body>.*?)</RECORDATORIO_BORRAR\s*>)",
                            re.IGNORECASE | re.DOTALL)
+_THINK_PAT    = re.compile(r"<PENSAR\b[^>]*>", re.IGNORECASE)
 _TASK_ADD_PAT = re.compile(r"<TAREA(?P<attrs>(?:\s[^>]*)?)>(?P<body>.*?)</TAREA\s*>",
                            re.IGNORECASE | re.DOTALL)
 _TASK_DEL_PAT = re.compile(r"<TAREA_BORRAR\b(?P<attrs>[^>]*?)(?:/>|>(?P<body>.*?)</TAREA_BORRAR\s*>)",
@@ -2104,11 +2159,11 @@ _ACTION_TAG_NAMES = [
     "WA", "WA_SELF", "WA_CONTACTOS", "WA_LEER",
     "CAPTURA", "CAMARA", "CÁMARA",
     "MEMORIA_GUARDAR", "MEMORIA_EDITAR", "MEMORIA_BORRAR",
-    "RECORDATORIO", "RECORDATORIO_BORRAR", "TAREA", "TAREA_BORRAR",
+    "RECORDATORIO", "RECORDATORIO_BORRAR", "TAREA", "TAREA_BORRAR", "PENSAR",
     "PC_VER", "PC_CLIC", "PC_DOBLE_CLIC", "PC_ESCRIBIR", "PC_TECLA", "PC_ARRASTRAR",
     "PC_RUEDA", "PC_MOVER", "PC_ZOOM", "PC_VENTANA", "PC_ESPERAR",
 ]
-_SELF_CLOSING_TAGS = {"WEB_BACK", "WEB_READ", "CAPTURA", "CAMARA", "CÁMARA",
+_SELF_CLOSING_TAGS = {"WEB_BACK", "WEB_READ", "CAPTURA", "CAMARA", "CÁMARA", "PENSAR",
                       "WA_CONTACTOS", "WA_LEER",
                       "PC_VER", "PC_CLIC", "PC_DOBLE_CLIC", "PC_ARRASTRAR", "PC_RUEDA",
                       "PC_MOVER", "PC_ZOOM", "PC_ESPERAR"}
@@ -4618,6 +4673,7 @@ DEFAULT_CONFIG = {
     "ollama_host":          "http://localhost:11434",
     "ollama_model":         "gemma3:4b",
     "ollama_no_think":      True,
+    "ollama_think_mode":    "",       # "never", "auto" (decide la IA) o "always"; vacío = según la anterior
     "ollama_keep_alive":    "30m",
     "ollama_num_ctx":       0,
     "ollama_preload":       True,
@@ -6490,11 +6546,26 @@ class SettingsWindow(tk.Toplevel):
         opt = ttk.LabelFrame(p, text="Comportamiento", padding=12)
         opt.pack(fill='x', pady=6)
         opt.columnconfigure(1, weight=1)
-        self._check(opt, "ollama_no_think",
-                    "⚡  Sin razonamiento interno  (respuestas más rápidas)", 0)
+        tk.Label(opt, text="🧠  Razonamiento interno (pensar antes de responder):",
+                 bg=self.C["bg"], fg=self.C["text"], font=("Segoe UI", 10)
+                 ).grid(row=0, column=0, columnspan=2, sticky='w', padx=8, pady=(0, 2))
+        tv = tk.StringVar(value=think_mode(self._cfg))
+        self._vars["ollama_think_mode"] = tv
+        for i, (val, txt) in enumerate((
+                ("never",  "⚡  Nunca  (respuestas más rápidas)"),
+                ("auto",   "🤔  Que decida la IA: solo si es complicado o si se ha equivocado"),
+                ("always", "🧠  Siempre  (más lento: unos segundos más por respuesta)"))):
+            tk.Radiobutton(opt, text=txt, variable=tv, value=val,
+                           bg=self.C["bg"], fg=self.C["text"], selectcolor=self.C["deep"],
+                           activebackground=self.C["bg"], font=("Segoe UI", 10)
+                           ).grid(row=1 + i, column=0, columnspan=2, sticky='w', padx=16, pady=1)
+        tk.Label(opt, text=("Con «Que decida la IA», cuando piensa lo verás en el panel («Lo pienso con "
+                            "calma…»).\nSolo funciona con modelos que razonan (como Gemma 4)."),
+                 bg=self.C["bg"], fg=self.C["muted"], font=("Segoe UI", 8), justify='left'
+                 ).grid(row=4, column=0, columnspan=2, sticky='w', padx=8, pady=(2, 4))
         tk.Label(opt, text="💬  Los mensajes anteriores que recuerda se ajustan en «Conversación».",
                  bg=self.C["bg"], fg=self.C["muted"], font=("Segoe UI", 8)
-                 ).grid(row=1, column=0, columnspan=2, sticky='w', padx=8, pady=2)
+                 ).grid(row=5, column=0, columnspan=2, sticky='w', padx=8, pady=2)
 
         # ── Herramientas ─────────────────────────────────────────────────────
         cmd_f = ttk.LabelFrame(p, text="🛠  Herramientas de la IA", padding=12)
@@ -7943,7 +8014,7 @@ class SettingsWindow(tk.Toplevel):
         if "pc_stop_hotkey" in cfg:
             cfg["pc_stop_hotkey"] = str(cfg["pc_stop_hotkey"]).strip().lower() or "esc"
         for key in ("ollama_keep_alive", "vision_model", "reminder_sound_file", "ollama_model",
-                    "ollama_host", "whatsapp_self_trigger_words"):
+                    "ollama_host", "whatsapp_self_trigger_words", "ollama_think_mode"):
             if key in cfg:
                 cfg[key] = str(cfg[key]).strip()
         for key in ("orb_opacity","orb_opacity_min","popup_opacity",
@@ -7952,6 +8023,8 @@ class SettingsWindow(tk.Toplevel):
                     "dynamic_energy_ratio","tts_volume","pc_action_delay"):
             try: cfg[key] = round(float(cfg.get(key,1.0)), 3)
             except Exception: pass
+        if "ollama_think_mode" in self._vars:       # la opción antigua se mantiene al día
+            cfg["ollama_no_think"] = think_mode(cfg) != "always"
         save_config(cfg)
         self._on_save(cfg)
         messagebox.showinfo("✅ Guardado",
@@ -9129,12 +9202,28 @@ class VoiceAIApp:
             memory_enabled=flags["memory"],
             reminders_enabled=flags["reminders"],
             ai_tasks_enabled=flags["ai_tasks"],
+            think_auto=(think_mode(cfg) == "auto" and self._model_can_think(
+                cfg.get("ollama_host", "http://localhost:11434"), cfg.get("ollama_model", ""))),
             memory_block=self._memory.prompt_block(),
             reminders_block=self._reminders.prompt_block(),
             ai_tasks_block=self._ai_tasks.prompt_block(),
             pc_block=(_pc_system_addon(cfg, flags["cmd"], flags["browser"]) if flags["pc"] else ""),
             wa_block=(_wa_system_addon(cfg) if flags["wa"] else ""),
         )
+
+    @staticmethod
+    def _model_can_think(host: str, model: str) -> bool:
+        """¿El modelo tiene modo de razonamiento? (si no se sabe, se supone que sí)"""
+        caps = ollama_capabilities(host, model)
+        return caps is None or "thinking" in caps
+
+    @staticmethod
+    def _thinking_messages(msgs: list) -> list:
+        """Los mismos mensajes, avisando de que ahora está en modo razonamiento."""
+        out = [dict(m) for m in msgs]
+        if out and out[0].get("role") == "system" and _THINK_ON_NOTE not in out[0]["content"]:
+            out[0]["content"] += _THINK_ON_NOTE
+        return out
 
     @staticmethod
     def _flags(cfg: dict) -> dict:
@@ -9911,6 +10000,13 @@ class VoiceAIApp:
                 pass
 
         while True:
+            if ctx.get("think_auto") and not ctx.get("thinking") and _THINK_PAT.search(current):
+                ctx["thinking"], no_think = True, False
+                print("💭  La IA ha decidido pensar los siguientes pasos")
+                post("\n💭 *Lo pienso con calma…*\n")
+                turn_messages = self._thinking_messages(turn_messages)
+                current = self._ollama_chat(turn_messages, no_think, host, model)
+                continue
             errors = self._process_instant_actions(current, ctx)
             needs  = self._has_followup(current, ctx["flags"])
             if not needs and not errors:
@@ -9936,6 +10032,9 @@ class VoiceAIApp:
                              + results)
             if errors:
                 parts.append("⚠️ Estas etiquetas NO se pudieron aplicar:\n" + errors)
+            if ctx.get("think_auto") and not ctx.get("thinking") and (errors or "❌" in results):
+                parts.append("(Si ves que esto es más difícil de lo que parecía, escribe solo <PENSAR/> "
+                             "y podrás pensar con calma los siguientes pasos.)")
             followup = ("\n\n".join(parts) +
                         "\n\nSi necesitas más pasos para completar la tarea del usuario (más "
                         "comandos, búsquedas, capturas o acciones), hazlo ahora. Cuando hayas "
@@ -10125,7 +10224,9 @@ class VoiceAIApp:
         cfg       = self.config
         host      = cfg.get("ollama_host","http://localhost:11434")
         model     = cfg.get("ollama_model","gemma3:4b")
-        no_think  = bool(cfg.get("ollama_no_think", True))
+        mode      = think_mode(cfg)
+        no_think  = mode != "always"
+        think_auto = mode == "auto" and self._model_can_think(host, model)
         use_mem   = bool(cfg.get("conversation_memory", True))
         max_hist  = int(cfg.get("max_history_turns", 10))
         flags     = self._flags(cfg)
@@ -10149,7 +10250,8 @@ class VoiceAIApp:
         messages   = ([{"role": "system", "content": self._system_prompt(cfg)}]
                       + history + [user_entry])
         ctx = {"flags": flags, "notes": [], "done": set(),
-               "prompt": prompt, "host": host, "model": model, "origin": origin}
+               "prompt": prompt, "host": host, "model": model, "origin": origin,
+               "think_auto": think_auto, "thinking": False}
 
         # ── TTS: una sola cola para toda la respuesta ────────────────────────
         def _make_tts_worker(tts_q: queue.Queue):
@@ -10273,6 +10375,25 @@ class VoiceAIApp:
                 tts_worker.join(timeout=120)
             return ""                         # sin historial, log ni conversación continua
 
+        # ── ¿Ha decidido pensarlo? Se le vuelve a preguntar con el razonamiento ──
+        if think_auto and _THINK_PAT.search(full_response):
+            ctx["thinking"], no_think = True, False
+            print("💭  La IA ha decidido pensarlo")
+            self._ui_q.put(("popup_chunk", "💭 *Lo pienso con calma…*\n\n"))
+            messages = self._thinking_messages(messages)
+            try:
+                full_response = self._ollama_chat(messages, False, host, model)
+            except Exception as e:
+                full_response = f"❌  No he podido pensarlo: {e}"
+            visible = strip_action_tags(full_response)
+            if visible:
+                self._ui_q.put(("popup_chunk", visible))
+            if tts_on and not tts_paused:
+                if self._has_followup(full_response, flags):
+                    tts_paused = True
+                else:
+                    _flush_tts(tts_q, tts_filter.feed(full_response))
+
         # ── Herramientas (memoria/recordatorios al momento; el resto con más pasos) ─
         try:
             final_response = self._run_agentic_loop(
@@ -10325,13 +10446,15 @@ class VoiceAIApp:
             turn = [{**user_entry, "ts": now}]
             # Qué herramientas usó (sin los resultados): así, si le vuelves a preguntar
             # «¿y ahora qué dice?», las vuelve a usar en vez de contestar de memoria
-            trace = tools_trace(ctx.get("trace") or [])
+            used = ctx.get("trace") or []
+            trace = tools_trace((["<PENSAR/>"] if ctx.get("thinking") else []) + used)
             if trace:
+                note = (f"(Aquí estaban los resultados de esas herramientas, de las "
+                        f"{datetime.now():%H:%M}. No se guardan en el historial: si te vuelven "
+                        f"a preguntar por lo mismo, vuelve a usar la herramienta.)" if used else
+                        "(Aquí lo pensaste con calma antes de responder.)")
                 turn += [{"role": "assistant", "ts": now, "content": trace},
-                         {"role": "user", "ts": now, "tool_results": True, "content": (
-                             f"(Aquí estaban los resultados de esas herramientas, de las "
-                             f"{datetime.now():%H:%M}. No se guardan en el historial: si te vuelven "
-                             f"a preguntar por lo mismo, vuelve a usar la herramienta.)")}]
+                         {"role": "user", "ts": now, "tool_results": True, "content": note}]
             turn.append({"role": "assistant", "ts": now,
                          "content": _LEADING_STAMP_RE.sub("", final_response).strip()})
             self._history.extend(turn)

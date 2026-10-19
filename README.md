@@ -295,7 +295,7 @@ abierto, aparece la ventana **«Escribir a Rubencho AI»**.
 | **General** | Inicio con Windows, popup siempre encima, pitido al detectar la palabra, conversación continua (tiempo y palabra de parada), idioma, **fecha y hora en cada mensaje** y el botón **Abrir la carpeta de datos**. |
 | **Palabra clave** | Palabra de activación (lista o personalizada). |
 | **Reconocimiento** | Motor de la palabra clave (local al instante con Vosk, o Google), tiempos de escucha, detección de fin de frase, motor de la orden (Whisper/Google/Vosk), modelo, dispositivo (auto/cpu/cuda), precisión y precarga de Whisper. |
-| **IA / Ollama** | Servidor y modelo, mantener el modelo cargado, tamaño de contexto, razonamiento, herramientas (comandos, búsqueda web, navegador), **prompt de sistema** y botón para ver las instrucciones completas que recibe la IA. |
+| **IA / Ollama** | Servidor y modelo, mantener el modelo cargado, tamaño de contexto, **razonamiento** (nunca, siempre o que decida la IA según lo complicado que sea), herramientas (comandos, búsqueda web, navegador), **prompt de sistema** y botón para ver las instrucciones completas que recibe la IA. |
 | **Control del PC** | Activarlo, elementos numerados, cuadrícula, captura de comprobación, resolución enviada, todas las **precauciones** (confirmación, freno con tecla y con esquina, parar al mover el ratón, juegos a pantalla completa, aviso, límite de pasos, pausa entre acciones) y el botón *Ver lo que ve la IA*. |
 | **Visión** | Permitir capturas y cámara, ocultar el orbe/popup al capturar, nº de cámara, tamaño de las imágenes, cuántas conservar, modelo de visión opcional, botones de prueba. |
 | **Memoria** | Activarla y ver, añadir, editar o borrar lo que recuerda. |

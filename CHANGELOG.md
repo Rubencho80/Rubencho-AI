@@ -3,6 +3,19 @@
 Las versiones se publican en [Releases](../../releases) con su instalador
 (`Instalar Rubencho AI.exe`).
 
+## 1.3.5 — 20-10-2026
+
+- **Razonamiento: «Que decida la IA»** (Configuración → IA / Ollama), además de
+  «Nunca» y «Siempre». Responde directamente y, si ve que es algo realmente
+  complicado (un problema de lógica, un plan con muchas condiciones, programar…)
+  o que se ha equivocado, lo vuelve a hacer con el razonamiento de Ollama
+  activado. También puede decidirlo a mitad de una tarea si un paso falla, y
+  guardar en la memoria qué cosas le cuesta hacer para pensarlas a la primera
+  la próxima vez. Solo con modelos que razonan (como Gemma 4).
+- En la prueba con casos nuevos acertó cuándo pensar en 12 de 14 (y nunca pensó
+  en lo sencillo); con el razonamiento, el acertijo de las cajas pasa de mal a
+  bien (de 1,4 s a unos 6 s).
+
 ## 1.3.4 — 20-10-2026
 
 - **Ya no contesta de memoria cuando le vuelves a preguntar** («¿y ahora qué
