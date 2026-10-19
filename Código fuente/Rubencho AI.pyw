@@ -29,7 +29,7 @@ Novedades 1.2.0
   • Muchos arreglos (ver el resumen de cambios entregado con esta versión).
 """
 
-APP_VERSION = "1.3.2"      # interna: no se muestra al usuario (ver version_info.txt)
+APP_VERSION = "1.3.3"      # interna: no se muestra al usuario (ver version_info.txt)
 
 import tkinter as tk
 from tkinter import ttk, messagebox, colorchooser, filedialog, simpledialog
@@ -1629,6 +1629,21 @@ def wa_stop_bridge(proc, port: int = 3847):
             pass
 
 
+def wa_self_trigger_ok(text: str, cfg: dict) -> bool:
+    """
+    ¿Hay que contestar a este mensaje del chat propio? Si está activada la opción,
+    solo cuando le llamas por una de tus palabras («asistente», «rubencho»…).
+    """
+    if not cfg.get("whatsapp_self_trigger", False):
+        return True
+    words = [w for w in (_norm_text(x) for x in
+                         re.split(r"[,;\n]", str(cfg.get("whatsapp_self_trigger_words", "") or ""))) if w]
+    if not words:
+        return True
+    t = _norm_text(text)
+    return any(re.search(r"(?<!\w)" + re.escape(w) + r"(?!\w)", t) for w in words)
+
+
 def wa_poll_messages(port: int = 3847) -> list:
     """
     Consulta GET /messages al bridge y devuelve los mensajes nuevos
@@ -1838,6 +1853,43 @@ Ejemplos:
 {recordatorios}
 """
 
+_AI_TASKS_SYSTEM_ADDON = """
+─── TAREAS PARA TI MISMO ────────────────────────────────────────────────────
+Además de los recordatorios para el usuario, puedes programarte TAREAS a ti
+mismo. Cuando llegue la hora, el sistema te enviará un mensaje con lo que
+escribiste y entonces la harás tú con tus herramientas (enviar un WhatsApp,
+buscar en internet, mirar algo…), aunque el usuario no esté delante.
+
+    <TAREA cuando="CUÁNDO">qué tienes que hacer, con todos los detalles</TAREA>
+    <TAREA cuando="CUÁNDO" repetir="diario">…</TAREA>
+    <TAREA_BORRAR id="N"/>
+
+"cuando" y "repetir" se escriben igual que en los recordatorios.
+
+¿RECORDATORIO o TAREA?
+  • RECORDATORIO → el usuario quiere que le AVISES a él ("recuérdame llamar a mi padre").
+  • TAREA        → quiere que TÚ HAGAS algo más tarde ("mañana a las 8 mándale a mi
+                   padre que…", "a las 10 de la noche mira el tiempo de mañana y dímelo").
+
+REGLAS:
+1. Escribe la tarea como una orden completa para ti, con todo lo necesario para
+   hacerla sin más contexto: qué hacer, a quién, por qué medio y el texto exacto
+   si hay que enviar algo. Mal: "lo de mi padre". Bien: "Enviar un WhatsApp a
+   Papá: «Llego a las 3, guárdame comida»".
+2. Si te falta algo para poder hacerla (qué mensaje, a quién…), pregúntalo ANTES
+   de programarla.
+3. Confirma en pocas palabras ("Hecho, mañana a las 8 se lo mando.").
+4. Para borrar o consultar tus tareas usa la lista de abajo (con sus números).
+
+Ejemplo:
+  "Mañana a las 8 mándale un WhatsApp a mi padre diciéndole que llego a las 3"
+    → "Hecho, mañana a las 8 se lo mando. <TAREA cuando="mañana 8:00">Enviar un
+       WhatsApp a mi padre: «Llego a las 3»</TAREA>"
+
+═══ TUS TAREAS PENDIENTES ═══
+{tareas}
+"""
+
 
 def _pc_system_addon(cfg: dict, cmd_enabled: bool = False, browser_enabled: bool = False) -> str:
     """Instrucciones del control del PC según las opciones activadas."""
@@ -1949,8 +2001,10 @@ def _build_system_prompt(base: str, cmd_enabled: bool,
                          vision_enabled: bool = False,
                          memory_enabled: bool = False,
                          reminders_enabled: bool = False,
+                         ai_tasks_enabled: bool = False,
                          memory_block: str = "",
                          reminders_block: str = "",
+                         ai_tasks_block: str = "",
                          pc_block: str = "",
                          wa_block: str = "") -> str:
     """
@@ -1983,6 +2037,9 @@ def _build_system_prompt(base: str, cmd_enabled: bool,
     if reminders_enabled:
         tools.append(_REMINDERS_SYSTEM_ADDON.format(
             recordatorios=reminders_block or "(No hay recordatorios pendientes.)"))
+    if ai_tasks_enabled:
+        tools.append(_AI_TASKS_SYSTEM_ADDON.format(
+            tareas=ai_tasks_block or "(No tienes tareas pendientes.)"))
     if memory_enabled:
         tools.append(_MEMORY_SYSTEM_ADDON.format(
             memoria=memory_block or "(La memoria está vacía.)"))
@@ -2008,6 +2065,10 @@ _MEM_DEL_PAT  = re.compile(r"<MEMORIA_BORRAR\b(?P<attrs>[^>]*?)(?:/>|>(?P<body>.
 _REM_ADD_PAT  = re.compile(r"<RECORDATORIO(?P<attrs>(?:\s[^>]*)?)>(?P<body>.*?)</RECORDATORIO\s*>",
                            re.IGNORECASE | re.DOTALL)
 _REM_DEL_PAT  = re.compile(r"<RECORDATORIO_BORRAR\b(?P<attrs>[^>]*?)(?:/>|>(?P<body>.*?)</RECORDATORIO_BORRAR\s*>)",
+                           re.IGNORECASE | re.DOTALL)
+_TASK_ADD_PAT = re.compile(r"<TAREA(?P<attrs>(?:\s[^>]*)?)>(?P<body>.*?)</TAREA\s*>",
+                           re.IGNORECASE | re.DOTALL)
+_TASK_DEL_PAT = re.compile(r"<TAREA_BORRAR\b(?P<attrs>[^>]*?)(?:/>|>(?P<body>.*?)</TAREA_BORRAR\s*>)",
                            re.IGNORECASE | re.DOTALL)
 
 _ATTR_PAT = re.compile(r"""([\wáéíóúñ]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>/]+))""", re.IGNORECASE)
@@ -2039,7 +2100,7 @@ _ACTION_TAG_NAMES = [
     "WA", "WA_SELF", "WA_CONTACTOS", "WA_LEER",
     "CAPTURA", "CAMARA", "CÁMARA",
     "MEMORIA_GUARDAR", "MEMORIA_EDITAR", "MEMORIA_BORRAR",
-    "RECORDATORIO", "RECORDATORIO_BORRAR",
+    "RECORDATORIO", "RECORDATORIO_BORRAR", "TAREA", "TAREA_BORRAR",
     "PC_VER", "PC_CLIC", "PC_DOBLE_CLIC", "PC_ESCRIBIR", "PC_TECLA", "PC_ARRASTRAR",
     "PC_RUEDA", "PC_MOVER", "PC_ZOOM", "PC_VENTANA", "PC_ESPERAR",
 ]
@@ -2128,6 +2189,7 @@ class TagStreamFilter:
 
 MEMORY_FILE    = APP_DIR / "memoria.json"
 REMINDERS_FILE = APP_DIR / "recordatorios.json"
+AI_TASKS_FILE  = APP_DIR / "tareas_ia.json"
 CAPTURES_DIR   = APP_DIR / "capturas"
 SOUNDS_DIR     = APP_DIR / "sonidos"
 
@@ -2556,6 +2618,8 @@ def _next_occurrence(dt: datetime, repetir: str, now: datetime, anchor_day: int 
 
 class ReminderStore:
     """Recordatorios guardados en recordatorios.json (carpeta de datos)"""
+    NOUN, DEFAULT_TEXT, MAX_TEXT = "el recordatorio", "Recordatorio", 300
+    EMPTY = "(No hay recordatorios pendientes.)"
 
     def __init__(self, path: Path = REMINDERS_FILE):
         self._path = path
@@ -2590,8 +2654,8 @@ class ReminderStore:
         if len(self._items) != before:
             self._save()
 
-    def add(self, texto: str, when: datetime, repetir: str = "") -> dict:
-        texto = _one_line(texto)[:300] or "Recordatorio"
+    def add(self, texto: str, when: datetime, repetir: str = "", extra: dict = None) -> dict:
+        texto = _one_line(texto)[:self.MAX_TEXT] or self.DEFAULT_TEXT
         repetir = normalize_repeat(repetir)
         if repetir == "laborables":
             while when.weekday() >= 5:
@@ -2601,7 +2665,7 @@ class ReminderStore:
                  "cuando": when.isoformat(timespec="seconds"),
                  "repetir": repetir, "dia_ancla": when.day,
                  "creado": datetime.now().isoformat(timespec="seconds"),
-                 "hecho": False, "disparado": None, "veces": 0}
+                 "hecho": False, "disparado": None, "veces": 0, **(extra or {})}
             self._next_id += 1
             self._items.append(r)
             self._save()
@@ -2616,7 +2680,7 @@ class ReminderStore:
         with self._lock:
             r = next((x for x in self._items if x["id"] == rid and not x.get("hecho")), None)
             if not r:
-                return False, f"no existe el recordatorio pendiente #{rid}"
+                return False, f"no existe {self.NOUN} pendiente #{rid}"
             self._items.remove(r)
             self._save()
             return True, f"borrado: {r['texto']}"
@@ -2658,11 +2722,21 @@ class ReminderStore:
         now = datetime.now()
         p = self.pending()
         if not p:
-            return "(No hay recordatorios pendientes.)"
+            return self.EMPTY
         lines = [f"[#{r['id']}] {self.describe(r, now)} — {r['texto']}" for r in p[:30]]
         if len(p) > 30:
             lines.append(f"(… y {len(p) - 30} más)")
         return "\n".join(lines)
+
+
+class AITaskStore(ReminderStore):
+    """Tareas que la IA se programa a sí misma (tareas_ia.json): al llegar la hora,
+    se le manda lo que tenía que hacer y lo hace ella."""
+    NOUN, DEFAULT_TEXT, MAX_TEXT = "la tarea", "", 1000
+    EMPTY = "(No tienes tareas pendientes.)"
+
+    def __init__(self, path: Path = AI_TASKS_FILE):
+        super().__init__(path)
 
 
 class ReminderScheduler(threading.Thread):
@@ -4543,6 +4617,10 @@ DEFAULT_CONFIG = {
     "memory_enabled":       True,
     # Recordatorios
     "reminders_enabled":       True,
+    # Tareas que la IA se programa a sí misma
+    "ai_tasks_enabled":        True,
+    "ai_tasks_whatsapp":       False,    # mandarte por WhatsApp lo que ha hecho
+    "ai_tasks_confirm":        False,    # pedir confirmación antes de enviar WhatsApps
     "reminder_sound":          True,
     "reminder_sound_file":     "",
     "reminder_sound_repeats":  3,
@@ -4599,6 +4677,8 @@ DEFAULT_CONFIG = {
     "whatsapp_bridge_autostart":    True,
     "whatsapp_notify_self":         True,
     "whatsapp_self_reply":          True,     # contestar a lo que te escribes en tu chat propio
+    "whatsapp_self_trigger":        False,    # …solo si le llamas por una de estas palabras
+    "whatsapp_self_trigger_words":  "asistente, rubencho",
     "whatsapp_read_enabled":        True,     # leer chats cuando el usuario lo pide
     "whatsapp_read_max":            20,       # máximo de mensajes hacia atrás
     "whatsapp_read_images":         True,     # ver las fotos recibidas
@@ -5797,6 +5877,7 @@ class SettingsWindow(tk.Toplevel):
         ("pc",        "🖱  Control del PC",   "_tab_pc"),
         ("memory",    "🧠  Memoria",          "_tab_memory"),
         ("reminders", "⏰  Recordatorios",    "_tab_reminders"),
+        ("aitasks",   "🤖  Tareas de la IA",   "_tab_ai_tasks"),
         ("orb",       "🔵  Orbe",             "_tab_orb"),
         ("popup",     "💬  Popup",            "_tab_popup"),
         ("tts",       "🔊  Voz IA",           "_tab_tts"),
@@ -6841,6 +6922,119 @@ class SettingsWindow(tk.Toplevel):
         refresh()
 
     # ── Recordatorios ─────────────────────────────────────────────────────────
+    def _pending_list(self, p, store, new_title="Nuevo recordatorio", text_label="Texto:",
+                      text_col="Texto"):
+        """Lista de pendientes con «Nuevo», «Borrar» y «Actualizar» (recordatorios y tareas)."""
+        C = self.C
+        tk.Label(p, text="Pendientes", bg=C["bg"], fg=C["accent"],
+                 font=("Segoe UI", 10, "bold")).pack(anchor='w', pady=(10, 2))
+        lst = tk.Frame(p, bg=C["bg"])
+        lst.pack(fill='both', expand=True)
+        tree = ttk.Treeview(lst, columns=("id", "cuando", "repetir", "texto"), show="headings",
+                            height=9, selectmode="browse")
+        for col, title, w, st in (("id", "#", 46, False), ("cuando", "Cuándo", 215, False),
+                                  ("repetir", "Repetir", 110, False), ("texto", text_col, 320, True)):
+            tree.heading(col, text=title)
+            tree.column(col, width=w, minwidth=40, stretch=st, anchor="center" if col == "id" else "w")
+        sb = tk.Scrollbar(lst, orient="vertical", command=tree.yview)
+        tree.configure(yscrollcommand=sb.set)
+        tree.pack(side='left', fill='both', expand=True)
+        sb.pack(side='right', fill='y')
+
+        def refresh():
+            tree.delete(*tree.get_children())
+            now = datetime.now()
+            for r in store.pending():
+                when = datetime.fromisoformat(r["cuando"])
+                tree.insert("", "end", iid=str(r["id"]), values=(
+                    r["id"], f"{fecha_corta(when, now)}  (en {duracion_humana(when - now)})",
+                    REPEAT_LABELS.get(r.get("repetir", ""), ""), r["texto"]))
+
+        def delete():
+            sel = tree.selection()
+            if sel and messagebox.askyesno("Borrar", f"¿Borrar {store.NOUN} #{sel[0]}?", parent=self):
+                store.delete(int(sel[0]))
+                refresh()
+
+        def new():
+            dlg = tk.Toplevel(self)
+            dlg.title(new_title)
+            dlg.configure(bg=C["bg"])
+            dlg.transient(self)
+            dlg.resizable(False, False)
+            frm = tk.Frame(dlg, bg=C["bg"], padx=16, pady=12)
+            frm.pack(fill='both', expand=True)
+            vals = {}
+            for i, (lbl, key, default) in enumerate(((text_label, "texto", ""),
+                                                     ("Cuándo:", "cuando", "mañana 9:00"))):
+                tk.Label(frm, text=lbl, bg=C["bg"], fg=C["text"], font=("Segoe UI", 10)
+                         ).grid(row=i, column=0, sticky='w', pady=4)
+                v = tk.StringVar(value=default)
+                tk.Entry(frm, textvariable=v, width=36, bg=C["panel"], fg=C["text"],
+                         insertbackground=C["accent"], relief='flat', font=("Segoe UI", 10)
+                         ).grid(row=i, column=1, sticky='ew', padx=8, pady=4)
+                vals[key] = v
+            tk.Label(frm, text="Repetir:", bg=C["bg"], fg=C["text"], font=("Segoe UI", 10)
+                     ).grid(row=2, column=0, sticky='w', pady=4)
+            rep = tk.StringVar(value="una vez")
+            ttk.Combobox(frm, textvariable=rep, state='readonly', width=20,
+                         values=[REPEAT_LABELS[k] for k in ("", "diario", "laborables",
+                                                            "semanal", "mensual", "anual")]
+                         ).grid(row=2, column=1, sticky='w', padx=8, pady=4)
+            msg = tk.Label(frm, text="Ejemplos: +10m · en 2 horas · hoy 18:30 · viernes 17:00 · 24/12 20:00",
+                           bg=C["bg"], fg=C["muted"], font=("Segoe UI", 8))
+            msg.grid(row=3, column=0, columnspan=2, sticky='w', pady=(4, 8))
+
+            def create():
+                try:
+                    when = parse_when(vals["cuando"].get())
+                    rkey = next(k for k, v in REPEAT_LABELS.items() if v == rep.get())
+                    texto = vals["texto"].get().strip() or store.DEFAULT_TEXT
+                    if not texto:
+                        raise ValueError("escribe qué tiene que hacer")
+                    store.add(texto, when, rkey)
+                    refresh()
+                    dlg.destroy()
+                except ValueError as e:
+                    msg.config(text=f"❌  {e}", fg="#ff5566")
+            tk.Button(frm, text="Crear", bg=C["accent"], fg="white", relief='flat', cursor="hand2",
+                      font=("Segoe UI", 10, "bold"), padx=16, pady=4, command=create
+                      ).grid(row=4, column=1, sticky='e', padx=8)
+            dlg.bind("<Return>", lambda _e: create())
+            dlg.grab_set()
+
+        bar = tk.Frame(p, bg=C["bg"])
+        bar.pack(fill='x', pady=4)
+        for txt, cmd in (("➕  Nuevo", new), ("🗑  Borrar", delete), ("🔄  Actualizar", refresh)):
+            tk.Button(bar, text=txt, bg=C["deep"], fg=C["text"], relief='flat', cursor="hand2",
+                      font=("Segoe UI", 9), padx=10, pady=5, command=cmd).pack(side='left', padx=(0, 6))
+        refresh()
+
+    def _tab_ai_tasks(self, p):
+        store = self._app._ai_tasks if self._app else AITaskStore()
+        of = ttk.LabelFrame(p, text="🤖  Tareas que la IA se programa a sí misma", padding=12)
+        of.pack(fill='x', pady=6)
+        of.columnconfigure(1, weight=1)
+        self._check(of, "ai_tasks_enabled",
+                    "🤖  Permitir que la IA se programe tareas para hacerlas más tarde", 0)
+        self._check(of, "ai_tasks_whatsapp",
+                    "📱  Mandarme por WhatsApp lo que ha hecho (si la integración está activa)", 1)
+        self._check(of, "ai_tasks_confirm",
+                    "✋  Pedir confirmación en el PC antes de enviar un WhatsApp desde una tarea", 2)
+        tk.Label(of, text=("Con la confirmación, si no estás delante para aceptarla, el mensaje no se envía.\n"
+                           "Sin ella se envía solo (se lo pediste al programarla), y solo a los contactos "
+                           "permitidos en WhatsApp."),
+                 bg=self.C["bg"], fg=self.C["muted"], font=("Segoe UI", 8), justify='left'
+                 ).grid(row=3, column=0, columnspan=2, sticky='w', padx=8, pady=(0, 4))
+        self._pending_list(p, store, new_title="Nueva tarea para la IA",
+                           text_label="Qué tiene que hacer:", text_col="Qué tiene que hacer")
+        self._info(p, [
+            "💡  Ejemplo: «mañana a las 8 mándale a mi padre que llego a las 3». A las 8 la IA",
+            "      recibe la tarea y envía el WhatsApp ella sola, aunque no estés delante del PC.",
+            "💡  Los recordatorios te avisan a ti; las tareas las hace la IA.",
+            "💡  Si Rubencho estaba cerrado a esa hora, la hace al abrirse (o explica por qué ya no).",
+        ])
+
     def _tab_reminders(self, p):
         C = self.C
         store = self._app._reminders if self._app else ReminderStore()
@@ -6878,86 +7072,7 @@ class SettingsWindow(tk.Toplevel):
             tk.Button(brow, text=txt, bg=C["deep"], fg=C["text"], relief='flat', cursor="hand2",
                       font=("Segoe UI", 9), padx=10, pady=5, command=cmd).pack(side='left', padx=(0, 6))
 
-        tk.Label(p, text="Pendientes", bg=C["bg"], fg=C["accent"],
-                 font=("Segoe UI", 10, "bold")).pack(anchor='w', pady=(10, 2))
-        lst = tk.Frame(p, bg=C["bg"])
-        lst.pack(fill='both', expand=True)
-        tree = ttk.Treeview(lst, columns=("id", "cuando", "repetir", "texto"), show="headings",
-                            height=9, selectmode="browse")
-        for col, title, w, st in (("id", "#", 46, False), ("cuando", "Cuándo", 170, False),
-                                  ("repetir", "Repetir", 130, False), ("texto", "Texto", 320, True)):
-            tree.heading(col, text=title)
-            tree.column(col, width=w, minwidth=40, stretch=st, anchor="center" if col == "id" else "w")
-        sb = tk.Scrollbar(lst, orient="vertical", command=tree.yview)
-        tree.configure(yscrollcommand=sb.set)
-        tree.pack(side='left', fill='both', expand=True)
-        sb.pack(side='right', fill='y')
-
-        def refresh():
-            tree.delete(*tree.get_children())
-            now = datetime.now()
-            for r in store.pending():
-                when = datetime.fromisoformat(r["cuando"])
-                tree.insert("", "end", iid=str(r["id"]), values=(
-                    r["id"], f"{fecha_corta(when, now)}  (en {duracion_humana(when - now)})",
-                    REPEAT_LABELS.get(r.get("repetir", ""), ""), r["texto"]))
-
-        def delete():
-            sel = tree.selection()
-            if sel and messagebox.askyesno("Borrar", f"¿Borrar el recordatorio #{sel[0]}?", parent=self):
-                store.delete(int(sel[0]))
-                refresh()
-
-        def new():
-            dlg = tk.Toplevel(self)
-            dlg.title("Nuevo recordatorio")
-            dlg.configure(bg=C["bg"])
-            dlg.transient(self)
-            dlg.resizable(False, False)
-            frm = tk.Frame(dlg, bg=C["bg"], padx=16, pady=12)
-            frm.pack(fill='both', expand=True)
-            vals = {}
-            for i, (lbl, key, default) in enumerate((("Texto:", "texto", ""),
-                                                     ("Cuándo:", "cuando", "mañana 9:00"))):
-                tk.Label(frm, text=lbl, bg=C["bg"], fg=C["text"], font=("Segoe UI", 10)
-                         ).grid(row=i, column=0, sticky='w', pady=4)
-                v = tk.StringVar(value=default)
-                tk.Entry(frm, textvariable=v, width=36, bg=C["panel"], fg=C["text"],
-                         insertbackground=C["accent"], relief='flat', font=("Segoe UI", 10)
-                         ).grid(row=i, column=1, sticky='ew', padx=8, pady=4)
-                vals[key] = v
-            tk.Label(frm, text="Repetir:", bg=C["bg"], fg=C["text"], font=("Segoe UI", 10)
-                     ).grid(row=2, column=0, sticky='w', pady=4)
-            rep = tk.StringVar(value="una vez")
-            ttk.Combobox(frm, textvariable=rep, state='readonly', width=20,
-                         values=[REPEAT_LABELS[k] for k in ("", "diario", "laborables",
-                                                            "semanal", "mensual", "anual")]
-                         ).grid(row=2, column=1, sticky='w', padx=8, pady=4)
-            msg = tk.Label(frm, text="Ejemplos: +10m · en 2 horas · hoy 18:30 · viernes 17:00 · 24/12 20:00",
-                           bg=C["bg"], fg=C["muted"], font=("Segoe UI", 8))
-            msg.grid(row=3, column=0, columnspan=2, sticky='w', pady=(4, 8))
-
-            def create():
-                try:
-                    when = parse_when(vals["cuando"].get())
-                    rkey = next(k for k, v in REPEAT_LABELS.items() if v == rep.get())
-                    store.add(vals["texto"].get() or "Recordatorio", when, rkey)
-                    refresh()
-                    dlg.destroy()
-                except ValueError as e:
-                    msg.config(text=f"❌  {e}", fg="#ff5566")
-            tk.Button(frm, text="Crear", bg=C["accent"], fg="white", relief='flat', cursor="hand2",
-                      font=("Segoe UI", 10, "bold"), padx=16, pady=4, command=create
-                      ).grid(row=4, column=1, sticky='e', padx=8)
-            dlg.bind("<Return>", lambda _e: create())
-            dlg.grab_set()
-
-        bar = tk.Frame(p, bg=C["bg"])
-        bar.pack(fill='x', pady=4)
-        for txt, cmd in (("➕  Nuevo", new), ("🗑  Borrar", delete), ("🔄  Actualizar", refresh)):
-            tk.Button(bar, text=txt, bg=C["deep"], fg=C["text"], relief='flat', cursor="hand2",
-                      font=("Segoe UI", 9), padx=10, pady=5, command=cmd).pack(side='left', padx=(0, 6))
-        refresh()
+        self._pending_list(p, store)
         self._info(p, [
             "🗣  Pídeselo a la IA: «recuérdame en 20 minutos que saque la ropa»,",
             "     «despiértame mañana a las 7:30», «cada día a las 22:00 recuérdame la pastilla».",
@@ -7276,8 +7391,16 @@ class SettingsWindow(tk.Toplevel):
                     "🔔  Permitir mandarte notas a ti mismo por WhatsApp", 2)
         self._check(mf, "whatsapp_self_reply",
                     "💬  Responder a lo que me escribo en mi chat propio de WhatsApp", 3)
-        self._lbl(mf, "Puerto del bridge:", 4)
-        self._entry(mf, "whatsapp_bridge_port", 4, w=8)
+        self._check(mf, "whatsapp_self_trigger",
+                    "🏷  …solo si le llamo por una de estas palabras:", 4)
+        self._lbl(mf, "      Palabras (separadas por comas):", 5)
+        self._entry(mf, "whatsapp_self_trigger_words", 5, w=30)
+        tk.Label(mf, text=("      Ej.: «asistente, rubencho». Si el mensaje no lleva ninguna, no contesta "
+                           "aunque sea tu chat propio.\n      Da igual mayúsculas y tildes."),
+                 bg=self.C["bg"], fg=self.C["muted"], font=("Segoe UI", 8), justify='left'
+                 ).grid(row=6, column=0, columnspan=3, sticky='w', padx=8, pady=(0, 4))
+        self._lbl(mf, "Puerto del bridge:", 7)
+        self._entry(mf, "whatsapp_bridge_port", 7, w=8)
 
         # ── Estado del bridge ─────────────────────────────────────────────────
         sf = ttk.LabelFrame(p, text="📡  Estado de la conexión", padding=12)
@@ -7780,7 +7903,7 @@ class SettingsWindow(tk.Toplevel):
         if "pc_stop_hotkey" in cfg:
             cfg["pc_stop_hotkey"] = str(cfg["pc_stop_hotkey"]).strip().lower() or "esc"
         for key in ("ollama_keep_alive", "vision_model", "reminder_sound_file", "ollama_model",
-                    "ollama_host"):
+                    "ollama_host", "whatsapp_self_trigger_words"):
             if key in cfg:
                 cfg[key] = str(cfg[key]).strip()
         for key in ("orb_opacity","orb_opacity_min","popup_opacity",
@@ -7992,6 +8115,7 @@ class VoiceAIApp:
         # Memoria persistente y recordatorios
         self._memory    = MemoryStore()
         self._reminders = ReminderStore()
+        self._ai_tasks  = AITaskStore()
 
         self._history: list = []
         if (self.config.get("log_load_as_memory") and
@@ -8022,6 +8146,8 @@ class VoiceAIApp:
         self._preload_models()
         self._scheduler = ReminderScheduler(self._reminders, self._on_reminder_due)
         self._scheduler.start()
+        self._task_scheduler = ReminderScheduler(self._ai_tasks, self._on_ai_task_due)
+        self._task_scheduler.start()
         self.root.after(50, self._process_queue)
 
         if "--settings" in sys.argv:
@@ -8962,8 +9088,10 @@ class VoiceAIApp:
             vision_enabled=flags["vision"],
             memory_enabled=flags["memory"],
             reminders_enabled=flags["reminders"],
+            ai_tasks_enabled=flags["ai_tasks"],
             memory_block=self._memory.prompt_block(),
             reminders_block=self._reminders.prompt_block(),
+            ai_tasks_block=self._ai_tasks.prompt_block(),
             pc_block=(_pc_system_addon(cfg, flags["cmd"], flags["browser"]) if flags["pc"] else ""),
             wa_block=(_wa_system_addon(cfg) if flags["wa"] else ""),
         )
@@ -8978,6 +9106,7 @@ class VoiceAIApp:
             "vision":    bool(cfg.get("vision_enabled", True)) and HAS_PIL,
             "memory":    bool(cfg.get("memory_enabled", True)),
             "reminders": bool(cfg.get("reminders_enabled", True)),
+            "ai_tasks":  bool(cfg.get("ai_tasks_enabled", True)),
             "pc":        bool(cfg.get("pc_control_enabled", False)) and HAS_PC_INPUT and HAS_PIL,
         }
 
@@ -9082,6 +9211,45 @@ class VoiceAIApp:
                     notes.append(f"⏰ Recordatorio #{rid} borrado")
                 else:
                     errors.append(f'<RECORDATORIO_BORRAR id="{rid}"> → ❌ {msg}')
+
+        if flags["ai_tasks"]:
+            for m in _TASK_ADD_PAT.finditer(text):
+                attrs  = _parse_attrs(m.group("attrs"))
+                body   = _one_line(m.group("body"))
+                cuando = (attrs.get("cuando") or attrs.get("en") or
+                          " ".join(x for x in (attrs.get("fecha", ""), attrs.get("hora", "")) if x)).strip()
+                rep    = attrs.get("repetir", "")
+                if not first_time(("tarea+", _norm_text(body), _norm_text(cuando), _norm_text(rep))):
+                    continue
+                if not body:
+                    errors.append('<TAREA> → ❌ está vacía: escribe dentro qué tienes que hacer.')
+                    continue
+                try:
+                    when = parse_when(cuando)
+                    # Lo que dijo el usuario, para tener el contexto cuando llegue la hora
+                    pedido = "" if ctx.get("origin") == "tarea" else _one_line(ctx.get("prompt", ""))[:300]
+                    t = self._ai_tasks.add(body, when, rep, extra={"pedido": pedido} if pedido else None)
+                    left = duracion_humana(when - datetime.now())
+                    notes.append(f"🤖 Tarea #{t['id']}: {self._ai_tasks.describe(t)} — "
+                                 f"{body} (dentro de {left})")
+                    print(f"🤖  Tarea #{t['id']} → {when:%Y-%m-%d %H:%M}: {body}")
+                except ValueError as e:
+                    errors.append(
+                        f'<TAREA cuando="{cuando}"> → ❌ NO se ha programado: {e}. '
+                        'Vuelve a escribir la etiqueta con un "cuando" válido, por ejemplo '
+                        '"+10m", "mañana 9:00", "viernes 17:00" o "2026-12-24 20:00".')
+            for m in _TASK_DEL_PAT.finditer(text):
+                tid = _tag_id(m.group("attrs"), m.group("body") or "")
+                if not first_time(("tarea-", tid)):
+                    continue
+                if tid is None:
+                    errors.append('<TAREA_BORRAR> → ❌ falta el número: usa id="N"')
+                    continue
+                ok, msg = self._ai_tasks.delete(tid)
+                if ok:
+                    notes.append(f"🤖 Tarea #{tid} borrada")
+                else:
+                    errors.append(f'<TAREA_BORRAR id="{tid}"> → ❌ {msg}')
         return "\n".join(errors)
 
     # ── Herramientas con resultado (CMD, web, navegador, WhatsApp, visión) ──
@@ -9381,6 +9549,9 @@ class VoiceAIApp:
         """Pide permiso antes de enviar (si está activado y la orden no viene del propio WhatsApp)."""
         if not self.config.get("whatsapp_confirm_send", True) or ctx.get("origin") == "whatsapp" \
                 or ctx.get("wa_allow_all"):
+            return True
+        # Una tarea programada: se lo pediste al programarla y puede que no estés delante
+        if ctx.get("origin") == "tarea" and not self.config.get("ai_tasks_confirm", False):
             return True
         evt, holder = threading.Event(), {}
         short = msg if len(msg) <= 160 else msg[:157] + "…"
@@ -9793,6 +9964,9 @@ class VoiceAIApp:
                     # Desactivado: se recogen igual (para que no se acumulen y se
                     # contesten de golpe al reactivarlo) pero no se procesan
                     if not text or not self.config.get("whatsapp_self_reply", True):
+                        continue
+                    if not wa_self_trigger_ok(text, self.config):
+                        print("[WA] Mensaje del chat propio sin tu palabra: no se contesta")
                         continue
                     print(f"[WA] Procesando mensaje entrante: {text[:60]}")
                     extra = {}
@@ -10396,6 +10570,47 @@ class VoiceAIApp:
             self._tts_last = time.time()
             self._tts_playing = False
 
+    # ── Tareas de la IA ──────────────────────────────────────────────────────
+    def _on_ai_task_due(self, task: dict, late: bool):
+        """Lo llama el planificador de tareas: se le manda a la IA lo que tenía que hacer."""
+        if not self.config.get("ai_tasks_enabled", True):
+            print(f"🤖  Tarea #{task.get('id')} no hecha: las tareas de la IA están desactivadas")
+            return
+        threading.Thread(target=self._run_ai_task, args=(task,), daemon=True,
+                         name=f"tarea-{task.get('id')}").start()
+
+    def _run_ai_task(self, task: dict):
+        cfg   = self.config
+        texto = task.get("texto", "")
+        print(f"🤖  ¡Tarea #{task.get('id')}!  {texto}")
+        now = datetime.now()
+        lines = [f"[TAREA PROGRAMADA #{task.get('id')}] Ha llegado la hora de hacer esta "
+                 f"tarea que te programaste:", f"«{texto}»"]
+        if task.get("pedido"):
+            try:
+                cuando = fecha_corta(datetime.fromisoformat(task["creado"]), now)
+            except Exception:
+                cuando = "antes"
+            lines.append(f"(El usuario te la pidió {cuando}, diciendo: «{task['pedido']}»)")
+        try:
+            delay = now - datetime.fromisoformat(task["cuando"])
+        except Exception:
+            delay = timedelta(0)
+        if delay.total_seconds() > 120:
+            lines.append(f"⚠️ Llega con {duracion_humana(delay)} de retraso (el PC estaba apagado o "
+                         "Rubencho cerrado). Si dependía de la hora y ya no tiene sentido, no la "
+                         "hagas y explica por qué.")
+        lines.append("Hazla ahora con tus herramientas. El usuario puede no estar delante: no le "
+                     "preguntes nada. Si no puedes hacerla, di brevemente por qué. Termina con "
+                     "una frase corta que diga lo que has hecho.")
+        extra = {}
+        reply = self._stream_ollama("\n".join(lines), origin="tarea",
+                                    display=f"🤖⏰ Tarea programada: {texto}", result=extra)
+        if cfg.get("ai_tasks_whatsapp") and cfg.get("whatsapp_enabled"):
+            done = "\n".join([reply] + (extra.get("notes") or [])).strip() or "(sin respuesta)"
+            wa_send_self(f"🤖⏰ Tarea: {texto}\n{done}",
+                         port=int(cfg.get("whatsapp_bridge_port", 3847)))
+
     def _test_reminder(self):
         self._show_reminder({"id": 0, "texto": "Esto es un recordatorio de prueba",
                              "cuando": datetime.now().isoformat(timespec="seconds"),
@@ -10568,10 +10783,11 @@ class VoiceAIApp:
         print("👋  Cerrando Rubencho AI…")
         if self._pc_session is not None:
             self._pc_session.request_stop("Rubencho se está cerrando")
-        try:
-            self._scheduler.stop()
-        except Exception:
-            pass
+        for sched in (self._scheduler, getattr(self, "_task_scheduler", None)):
+            try:
+                sched.stop()
+            except Exception:
+                pass
         if self._ptt_listener is not None:
             try:
                 self._ptt_listener.stop()

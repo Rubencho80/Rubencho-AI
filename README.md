@@ -66,6 +66,7 @@ Configuración → Reconocimiento.
 | **Usar la cámara** 📷 | «Hazme una foto», «¿qué tengo en la mano?», «¿cómo voy vestido?» |
 | **Memoria** 🧠 | «Acuérdate de que mi color favorito es el azul», «olvida lo de…». La IA guarda sola lo importante (solo si lo ve necesario) y puede modificarlo o borrarlo. |
 | **Recordatorios** ⏰ | «Recuérdame en 20 minutos que saque la pizza», «despiértame mañana a las 7:30», «de lunes a viernes a las 8 recuérdame el café», «quita el recordatorio de la pizza» |
+| **Tareas para más tarde** 🤖 | «Mañana a las 8 mándale a mi padre que llego a las 3», «esta noche a las 10 mira el tiempo de mañana y dímelo». A esa hora la IA lo hace ella sola, aunque no estés delante. |
 | **WhatsApp** 📱 | «Dile a Mamá que llego tarde», «¿qué me ha mandado Juan?», «resúmeme el audio de Ana», «contéstale a Pedro que sí» (solo contactos, nunca grupos; ve las fotos y escucha los audios) |
 | **Navegador** 🌐 | «Busca monitores 4K en Amazon» (abre un Chromium que la IA controla; opcional) |
 | **Control del PC** 🖱️ | «Abre el bloc de notas y escribe la lista de la compra», «pon en pausa Spotify», «cierra las pestañas de Chrome menos esta», «arrastra este archivo a la carpeta Fotos» (opcional, ver abajo) |
@@ -82,6 +83,23 @@ falta (las capturas de pantalla y la cámara se pueden desactivar).
 - Pueden repetirse: cada día, de lunes a viernes, cada semana, cada mes o cada año.
 - Si el PC estaba apagado a esa hora, el aviso salta al abrir Rubencho AI.
 - Se pueden ver, crear y borrar en Configuración → Recordatorios.
+
+### 🤖 Tareas de la IA
+
+Son recordatorios que la IA se pone **a sí misma**: en vez de avisarte a ti, a la
+hora indicada le llega a la IA lo que tenía que hacer, y lo hace con sus
+herramientas (enviar un WhatsApp, buscar algo, mirar el tiempo…).
+
+- Pídeselo con naturalidad: «mañana a las 8 mándale a mi padre que llego a las 3».
+  La IA decide si es un recordatorio (avisarte a ti) o una tarea (hacerlo ella).
+- Al hacerla, la respuesta aparece en el panel (y se lee en voz alta si tienes la
+  voz activada). Si quieres, también te manda por WhatsApp lo que ha hecho.
+- Los WhatsApps de una tarea se envían sin preguntar, porque se lo pediste al
+  programarla (y solo a los contactos permitidos). Si prefieres confirmarlos,
+  actívalo en Configuración → Tareas de la IA; si no estás delante, no se envían.
+- Si Rubencho estaba cerrado a esa hora, la hace al abrirse, o te explica por qué
+  ya no tiene sentido.
+- Se pueden ver, crear y borrar en Configuración → Tareas de la IA.
 
 ### 🖱️ Control del PC (ratón y teclado)
 
@@ -282,11 +300,12 @@ abierto, aparece la ventana **«Escribir a Rubencho AI»**.
 | **Visión** | Permitir capturas y cámara, ocultar el orbe/popup al capturar, nº de cámara, tamaño de las imágenes, cuántas conservar, modelo de visión opcional, botones de prueba. |
 | **Memoria** | Activarla y ver, añadir, editar o borrar lo que recuerda. |
 | **Recordatorios** | Activarlos, sonido (repeticiones o un sonido propio .wav/.mp3), lectura en voz alta, aviso por WhatsApp, minutos al posponer, lista de pendientes y pruebas. |
+| **Tareas de la IA** | Permitir que la IA se programe tareas, mandarte por WhatsApp lo que ha hecho, confirmar o no sus WhatsApps, y lista de tareas pendientes. |
 | **Orbe** | Visibilidad, opacidad, tamaño, **color de cada modo** (con vista previa) y posición. |
 | **Popup** | Colores, opacidad, tamaño, posición, cierre automático (0 = nunca) y cierre al terminar de hablar. |
 | **Voz IA** | Activar la voz, motor (Windows/Google), velocidad, volumen y voz, y si se leen también las respuestas a mensajes escritos. |
 | **Conversación** | **Cuántos mensajes anteriores se le envían** (los más antiguos se olvidan solos) y si se olvidan los de hace más de X horas; guardar las conversaciones en un .txt, recuperar las últimas al iniciar y cuántas se guardan en el fichero. |
-| **WhatsApp** | Activar la integración, arrancar el puente, **responder o no a lo que te escribes en tu chat propio**, ver el QR, volver a vincular, **a qué contactos puede escribir**, si puede leer tus mensajes, ver fotos y escuchar audios, **máximo de mensajes que puede leer hacia atrás**, confirmación antes de enviar y envío de prueba. |
+| **WhatsApp** | Activar la integración, arrancar el puente, **responder o no a lo que te escribes en tu chat propio** (o solo si le llamas por tus palabras), ver el QR, volver a vincular, **a qué contactos puede escribir**, si puede leer tus mensajes, ver fotos y escuchar audios, **máximo de mensajes que puede leer hacia atrás**, confirmación antes de enviar y envío de prueba. |
 | **Push-to-Talk** | Activar y elegir la tecla o combinación. |
 
 La memoria y los recordatorios se guardan al momento; el resto, al pulsar **Guardar**.
@@ -302,7 +321,10 @@ La memoria y los recordatorios se guardan al momento; el resto, al pulsar **Guar
 5. Pídeselo con naturalidad: «escríbele a Mamá que llego tarde», «¿qué me ha
    dicho Juan?», «resúmeme el audio de Ana». La IA decide cuántos mensajes leer
    antes de responder (pocos si basta con lo último, más si le pides un resumen).
-6. También puedes escribirle en tu chat contigo mismo: te contesta allí.
+6. También puedes escribirle en tu chat contigo mismo: te contesta allí. Si
+   usas ese chat también para tus notas, activa **«solo si le llamo por una de
+   estas palabras»** (por ejemplo «asistente, rubencho»): entonces solo contesta a
+   los mensajes que lleven una de ellas.
 
 > Rubencho solo puede leer los mensajes que llegan mientras el puente está en
 > marcha y los que WhatsApp envía al vincular. Si la lista de contactos sale
@@ -330,6 +352,7 @@ carpeta de datos**):
 | `config.json` | La configuración |
 | `memoria.json` | Lo que la IA recuerda de ti |
 | `recordatorios.json` | Los recordatorios |
+| `tareas_ia.json` | Las tareas que la IA se ha programado |
 | `historial_conversaciones.txt` | Las conversaciones (si activas el log) |
 | `capturas\` | Capturas de pantalla, fotos y lo último que vio la IA al controlar el PC (`control_*.jpg`); se borran las más antiguas |
 | `sonidos\` | Sonidos de aviso generados por el programa |

@@ -3,6 +3,18 @@
 Las versiones se publican en [Releases](../../releases) con su instalador
 (`Instalar Rubencho AI.exe`).
 
+## 1.3.3 — 19-10-2026
+
+- **Tareas de la IA**: recordatorios que la IA se pone a sí misma. Al llegar la
+  hora le llega lo que tenía que hacer y lo hace con sus herramientas, aunque no
+  estés delante («mañana a las 8 mándale a mi padre que llego a las 3»). Son
+  distintos de los recordatorios normales, que te avisan a ti. Tienen su propia
+  sección en la configuración (lista, crear, borrar), opción de mandarte por
+  WhatsApp lo que ha hecho y de confirmar sus WhatsApps.
+- **Chat propio de WhatsApp**: opción para que solo conteste si le llamas por una
+  de tus palabras (por ejemplo «asistente, rubencho»); si no, aunque sea tu chat
+  contigo mismo, no contesta.
+
 ## 1.3.2 — 18-10-2026
 
 - **Palabra clave al instante**: se reconoce en el PC con Vosk mientras la dices,
