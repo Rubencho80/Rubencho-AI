@@ -48,7 +48,7 @@ Novedades de cada versión: [CHANGELOG.md](CHANGELOG.md).
 | **Push-to-Talk** | Mantén pulsada una tecla (por defecto **F9**) mientras hablas y suéltala para enviar. Se activa en Configuración. |
 | **Escuchar ahora** | Desde el menú del icono de la bandeja o del orbe. |
 | **Por escrito** | Clic izquierdo en el icono de la bandeja (o clic derecho → «Escribir mensaje»), doble clic en el orbe o en la caja de texto del panel de respuesta. |
-| **WhatsApp** | Escribe en tu chat contigo mismo y te contesta allí (opcional). |
+| **WhatsApp** | Escríbete o mándate un audio en tu chat contigo mismo y te contesta allí (opcional). |
 
 La orden se transcribe con **Whisper** (sin internet y muy preciso). La palabra
 clave se reconoce en tu PC con **Vosk**, mientras la dices: no espera a que acabes
@@ -321,10 +321,12 @@ La memoria y los recordatorios se guardan al momento; el resto, al pulsar **Guar
 5. Pídeselo con naturalidad: «escríbele a Mamá que llego tarde», «¿qué me ha
    dicho Juan?», «resúmeme el audio de Ana». La IA decide cuántos mensajes leer
    antes de responder (pocos si basta con lo último, más si le pides un resumen).
-6. También puedes escribirle en tu chat contigo mismo: te contesta allí. Si
+6. También puedes escribirle o **mandarle audios** en tu chat contigo mismo: te
+   contesta allí, sin abrir el panel ni hablar en el PC (se puede activar «mostrar
+   en el PC lo que me contesta ahí»). Los audios se transcriben con Whisper. Si
    usas ese chat también para tus notas, activa **«solo si le llamo por una de
    estas palabras»** (por ejemplo «asistente, rubencho»): entonces solo contesta a
-   los mensajes que lleven una de ellas.
+   los mensajes y audios que lleven una de ellas.
 
 > Rubencho solo puede leer los mensajes que llegan mientras el puente está en
 > marcha y los que WhatsApp envía al vincular. Si la lista de contactos sale

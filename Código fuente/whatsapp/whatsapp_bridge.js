@@ -520,14 +520,16 @@ async function startSocket() {
                 const chatId = msg.key?.remoteJid || '';
                 const msgId  = msg.key?.id        || '';
                 const fromMe = !!msg.key?.fromMe;
-                const text   = msg.message?.conversation ||
-                               msg.message?.extendedTextMessage?.text || '';
+                const content = normalizeMessageContent(msg.message) || {};
+                const text   = content.conversation || content.extendedTextMessage?.text || '';
+                // Audios (notas de voz): Rubencho los descarga y los transcribe
+                const audio  = content.audioMessage;
 
                 pushLog('📋', `chatId="${chatId}" fromMe=${fromMe} type="${type}" id="${msgId.substring(0,14)}"`);
 
                 // Filtros básicos
                 if (!chatId || chatId.endsWith('@g.us') || chatId === 'status@broadcast') continue;
-                if (!text.trim()) { pushLog('⏭️', 'SKIP: sin texto'); continue; }
+                if (!text.trim() && !audio) { pushLog('⏭️', 'SKIP: sin texto ni audio'); continue; }
 
                 // Deduplicar (mismo msg puede llegar en @lid y @s.whatsapp.net)
                 if (msgId && processedMsgIds.has(msgId)) {
@@ -573,11 +575,14 @@ async function startSocket() {
                 if (!isSelfChat) { pushLog('⏭️', 'SKIP: no es chat propio (solo se guarda)'); continue; }
 
                 // ── Encolar ────────────────────────────────────────────────
-                pushLog('✅', `ENCOLADO: "${text.substring(0, 60)}"`);
+                pushLog('✅', audio ? `ENCOLADO: audio de ${audio.seconds || '?'} s`
+                                    : `ENCOLADO: "${text.substring(0, 60)}"`);
                 knownSelfChatJids.add(chatId);
                 knownSelfChatJids.add(normalChat);
                 processedMsgIds.add(msgId);
-                incomingQueue.push({ text, timestamp: Date.now(), id: msgId });
+                const item = { text, timestamp: Date.now(), id: msgId };
+                if (audio) item.audio = { jid: chatId, seconds: audio.seconds || 0 };
+                incomingQueue.push(item);
             }
         });
 

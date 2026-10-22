@@ -3,6 +3,16 @@
 Las versiones se publican en [Releases](../../releases) con su instalador
 (`Instalar Rubencho AI.exe`).
 
+## 1.3.6 — 22-10-2026
+
+- **Audios en tu chat propio de WhatsApp**: si te mandas una nota de voz, Rubencho
+  la transcribe con Whisper y te contesta como a un mensaje escrito (antes los
+  audios se ignoraban). La IA sabe que era un audio. Con «solo si le llamo por una
+  de estas palabras», el audio tiene que llevar una de ellas.
+- Lo que llega por tu chat propio se contesta solo allí: **sin panel ni voz en el
+  PC** (el panel no se cerraba nunca). Se puede volver a mostrar en
+  Configuración → WhatsApp → «…y mostrar en el PC lo que me contesta ahí».
+
 ## 1.3.5 — 20-10-2026
 
 - **Razonamiento: «Que decida la IA»** (Configuración → IA / Ollama), además de

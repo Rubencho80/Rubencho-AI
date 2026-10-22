@@ -29,7 +29,7 @@ Novedades 1.2.0
   • Muchos arreglos (ver el resumen de cambios entregado con esta versión).
 """
 
-APP_VERSION = "1.3.5"      # interna: no se muestra al usuario (ver version_info.txt)
+APP_VERSION = "1.3.6"      # interna: no se muestra al usuario (ver version_info.txt)
 
 import tkinter as tk
 from tkinter import ttk, messagebox, colorchooser, filedialog, simpledialog
@@ -1646,6 +1646,25 @@ def wa_self_trigger_ok(text: str, cfg: dict) -> bool:
         return True
     t = _norm_text(text)
     return any(re.search(r"(?<!\w)" + re.escape(w) + r"(?!\w)", t) for w in words)
+
+
+class _NoPopupQueue:
+    """
+    Cola de la interfaz que descarta el panel de respuesta (lo demás pasa igual).
+    Se usa con lo que llega por tu chat propio de WhatsApp: la respuesta va allí.
+    """
+    DROP = {"open_popup_stream", "popup_chunk", "popup_image", "popup_stream_done", "close_popup"}
+
+    def __init__(self, q):
+        self._q = q
+
+    def put(self, item, *a, **k):
+        if isinstance(item, tuple) and item and item[0] in self.DROP:
+            return
+        self._q.put(item, *a, **k)
+
+    def __getattr__(self, name):
+        return getattr(self._q, name)
 
 
 def wa_poll_messages(port: int = 3847) -> list:
@@ -4775,6 +4794,7 @@ DEFAULT_CONFIG = {
     "whatsapp_self_reply":          True,     # contestar a lo que te escribes en tu chat propio
     "whatsapp_self_trigger":        False,    # …solo si le llamas por una de estas palabras
     "whatsapp_self_trigger_words":  "asistente, rubencho",
+    "whatsapp_self_popup":          False,    # mostrar en el PC el panel con lo que contesta ahí
     "whatsapp_read_enabled":        True,     # leer chats cuando el usuario lo pide
     "whatsapp_read_max":            20,       # máximo de mensajes hacia atrás
     "whatsapp_read_images":         True,     # ver las fotos recibidas
@@ -7502,16 +7522,18 @@ class SettingsWindow(tk.Toplevel):
                     "🔔  Permitir mandarte notas a ti mismo por WhatsApp", 2)
         self._check(mf, "whatsapp_self_reply",
                     "💬  Responder a lo que me escribo en mi chat propio de WhatsApp", 3)
+        self._check(mf, "whatsapp_self_popup",
+                    "🪟  …y mostrar en el PC lo que me contesta ahí (panel)", 4)
         self._check(mf, "whatsapp_self_trigger",
-                    "🏷  …solo si le llamo por una de estas palabras:", 4)
-        self._lbl(mf, "      Palabras (separadas por comas):", 5)
-        self._entry(mf, "whatsapp_self_trigger_words", 5, w=30)
+                    "🏷  …solo si le llamo por una de estas palabras (también en audios):", 5)
+        self._lbl(mf, "      Palabras (separadas por comas):", 6)
+        self._entry(mf, "whatsapp_self_trigger_words", 6, w=30)
         tk.Label(mf, text=("      Ej.: «asistente, rubencho». Si el mensaje no lleva ninguna, no contesta "
                            "aunque sea tu chat propio.\n      Da igual mayúsculas y tildes."),
                  bg=self.C["bg"], fg=self.C["muted"], font=("Segoe UI", 8), justify='left'
-                 ).grid(row=6, column=0, columnspan=3, sticky='w', padx=8, pady=(0, 4))
-        self._lbl(mf, "Puerto del bridge:", 7)
-        self._entry(mf, "whatsapp_bridge_port", 7, w=8)
+                 ).grid(row=7, column=0, columnspan=3, sticky='w', padx=8, pady=(0, 4))
+        self._lbl(mf, "Puerto del bridge:", 8)
+        self._entry(mf, "whatsapp_bridge_port", 8, w=8)
 
         # ── Estado del bridge ─────────────────────────────────────────────────
         sf = ttk.LabelFrame(p, text="📡  Estado de la conexión", padding=12)
@@ -10100,18 +10122,30 @@ class VoiceAIApp:
             try:
                 port = int(self.config.get("whatsapp_bridge_port", 3847))
                 for m in wa_poll_messages(port=port):
-                    text = (m.get("text") or "").strip()
+                    text  = (m.get("text") or "").strip()
+                    audio = m.get("audio")
                     # Desactivado: se recogen igual (para que no se acumulen y se
                     # contesten de golpe al reactivarlo) pero no se procesan
-                    if not text or not self.config.get("whatsapp_self_reply", True):
+                    if not (text or audio) or not self.config.get("whatsapp_self_reply", True):
                         continue
+                    if audio:
+                        heard, err = self._wa_self_audio(m, port)
+                        if not heard:
+                            print(f"[WA] Audio del chat propio sin transcribir: {err}")
+                            # Si solo contesta cuando le llamas, no se sabe si era para él
+                            if not self.config.get("whatsapp_self_trigger", False):
+                                wa_send_self(f"🎤 No he podido escuchar tu audio ({err}).", port=port)
+                            continue
+                        print(f"[WA] Audio del chat propio transcrito ({len(heard)} caracteres)")
+                        text = f"{text} {heard}".strip()
                     if not wa_self_trigger_ok(text, self.config):
                         print("[WA] Mensaje del chat propio sin tu palabra: no se contesta")
                         continue
                     print(f"[WA] Procesando mensaje entrante: {text[:60]}")
+                    prompt = f"[Mensaje de voz de WhatsApp, transcrito] {text}" if audio else text
                     extra = {}
-                    reply = self._stream_ollama(text, origin="whatsapp",
-                                                display=f"📱 [WhatsApp propio] {text}",
+                    reply = self._stream_ollama(prompt, origin="whatsapp",
+                                                display=f"📱 [WhatsApp propio{' · audio' if audio else ''}] {text}",
                                                 result=extra)
                     notes = extra.get("notes") or []
                     if reply or notes:
@@ -10119,6 +10153,16 @@ class VoiceAIApp:
             except Exception as e:
                 print(f"[WA] Error en escucha: {e}")
             time.sleep(3)
+
+    def _wa_self_audio(self, m: dict, port: int) -> Tuple[Optional[str], str]:
+        """Descarga y transcribe un audio de tu chat propio. → (texto | None, motivo del fallo)"""
+        res = wa_media((m.get("audio") or {}).get("jid", ""), m.get("id", ""), port=port)
+        if not res.get("ok"):
+            return None, res.get("error") or "no se pudo descargar"
+        text, err = self._wa_transcribe(res.get("base64", ""), res.get("mimetype", ""), m.get("id", ""))
+        if text and text.startswith("(no se entiende"):
+            return None, "no se entiende nada"
+        return text, err or ("no se pudo transcribir" if not text else "")
 
     # ── Escucha manual / detener ─────────────────────────────────────────────
     def _stop_listening(self):
@@ -10206,6 +10250,11 @@ class VoiceAIApp:
         """
         with self._chat_lock:                # una petición cada vez (historial coherente)
             self._processing = True
+            # Lo que llega por tu chat propio se contesta allí: sin panel en el PC
+            # (la voz ya va apagada para WhatsApp)
+            real_q = self._ui_q
+            if origin == "whatsapp" and not self.config.get("whatsapp_self_popup", False):
+                self._ui_q = _NoPopupQueue(real_q)
             try:
                 return self._stream_ollama_locked(prompt, ptt_mode, origin, display, result)
             except Exception as e:
@@ -10215,6 +10264,7 @@ class VoiceAIApp:
                 self._ui_q.put(("orb_state", "continuous" if self._continuous_active else "idle"))
                 return ""
             finally:
+                self._ui_q = real_q
                 self._processing = False
                 self._tts_playing = False
                 if origin == "voz":
